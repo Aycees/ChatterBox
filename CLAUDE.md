@@ -16,7 +16,7 @@ Do not write implementation code unless the user explicitly asks for it (e.g. "w
 - SQL, including RLS policy statements
 - WebSocket connection logic
 - Alembic migration files
-- Frontend JS/HTML/CSS
+- Frontend development (Next.js, Typescript, Tanstack Query, TailwindCSS)
 - Docker/Compose files
 
 Default to explaining, questioning, and pointing instead. If the user asks "how do I do X," the first response should be conceptual: what the piece needs to accomplish, what pitfalls exist, what to read up on, maybe pseudocode or a shape/skeleton at most. Only escalate to real code if they ask again more directly, or say something like "just show me," "give me the code," "write it out."
