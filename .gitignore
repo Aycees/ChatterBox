@@ -1,0 +1,16 @@
+# python (backend)
+backend/venv/
+backend/.venv/
+backend/__pycache__/
+backend/**/__pycache__/
+backend/*.egg-info/
+backend/.pytest_cache/
+backend/.mypy_cache/
+
+# env files
+.env
+.env.*
+!.env.example
+
+# os
+.DS_Store
