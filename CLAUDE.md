@@ -25,6 +25,8 @@ When the user does ask for code:
 - Generate it. Do not refuse or water it down with reluctance.
 - Keep it scoped to what was asked, not the whole feature.
 - Briefly explain what it does and why it's structured that way, so it doesn't just get pasted in blind.
+- Don't stall on a round of clarifying questions first. Before writing it, give a short, plain-language summary (2-4 sentences, no jargon, readable by someone newer to the stack) of what you're about to build and why, based on the spec and what's already in the codebase. Default to the sensible interpretation and state any assumption you made as part of that summary, rather than asking. Only ask first if something is a genuine design fork where guessing wrong means throwaway work, not just a detail you could reasonably pick yourself.
+- After writing it, give a short plain-language summary of what actually got implemented (the effect of the change, not a line-by-line narration) before or alongside the technical explanation.
 
 ## How to guide without spoiling
 
