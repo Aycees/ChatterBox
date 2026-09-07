@@ -31,8 +31,9 @@ Implemented so far:
 - `app_user` restricted role with least-privilege grants, `FORCE ROW LEVEL SECURITY`, and the full policy set from spec section 4.4 on `rooms`, `room_members`, and `messages` (Phase 3)
 - Room creation, joining, listing (own rooms and public rooms), and paginated message history (Phase 3)
 - Automated test suite covering the auth flow, room membership rules, and RLS-specific tests proving policies hold even against a raw `app_user` connection (unit + integration)
+- WebSocket real-time core: `/ws/rooms/{room_id}` with the auth-before-`accept()` ticket flow, an in-memory connection manager for fan-out, and `message`/`typing`/`presence` events over the spec's JSON envelope (Phase 4). Verified manually end-to-end; **not yet covered by the automated pytest suite** (websocket testing needs a different client setup than the existing `httpx.AsyncClient` tests use).
 
-Not yet implemented: the WebSocket real-time core (Phase 4) and the frontend (Phase 5). See section 6 of the spec for the full milestone breakdown.
+Not yet implemented: automated tests for the WebSocket layer, and the frontend (Phase 5). See section 6 of the spec for the full milestone breakdown.
 
 ## Prerequisites
 
@@ -111,8 +112,12 @@ Tests run against the same database configured in `.env`. Each test cleans up th
 | GET | `/rooms/public` | Yes | List joinable public rooms |
 | POST | `/rooms/{room_id}/join` | Yes | Join a public room, or add another user to a private room you already belong to |
 | GET | `/rooms/{room_id}/messages` | Yes | Paginated message history, newest-first, member-only |
+| POST | `/rooms/{room_id}/ws-ticket` | Yes | Mint a short-lived (30s), single-use ticket for opening this room's WebSocket connection |
+| WS | `/ws/rooms/{room_id}?ticket=<ticket>` | Ticket | Real-time messaging: send/receive `message`, `typing`, and `presence` events (spec section 5.2) |
 
 **Note on `GET /rooms/{room_id}/messages`:** the spec (section 7) asks for either a 403 or a documented empty result set for a non-member. This endpoint returns 404 instead, a deliberate choice so a non-member can't distinguish "not a member" from "room doesn't exist." RLS enforces the actual data restriction at the database layer regardless (section 4.4); this 404 is purely about what the HTTP layer reveals.
+
+**Note on the WebSocket ticket flow:** the WS endpoint doesn't take a JWT directly, browsers can't attach an `Authorization` header to a WS handshake, and putting a long-lived JWT in a query string tends to end up in access/proxy logs and browser history. So a client calls `POST /rooms/{room_id}/ws-ticket` (normal JWT auth) first, gets back a short-lived single-use `ticket`, and immediately opens the socket with that instead. See spec section 5.2 for the full rationale and flow.
 
 See section 5 of the spec for the full planned API and WebSocket contract.
 
@@ -121,11 +126,11 @@ See section 5 of the spec for the full planned API and WebSocket contract.
 ```
 backend/
   app/
-    api/          # routers (auth, rooms) and dependencies (get_current_user, get_db, get_authenticated_db)
-    core/         # settings, security (hashing, JWT)
+    api/          # routers (auth, rooms, ws) and dependencies (get_current_user, get_db, get_authenticated_db)
+    core/         # settings, security (hashing, JWT), connection_manager (WS fan-out), ws_tickets (WS auth)
     db/           # SQLAlchemy base, async session (connects as app_user)
     models/       # SQLAlchemy ORM models (user, room, room_member, message)
-    schemas/      # Pydantic request/response schemas
+    schemas/      # Pydantic request/response schemas, including the WS envelope shapes
     main.py       # FastAPI app entrypoint
   alembic/         # migrations, including app_user role/grants and RLS policies
   tests/           # pytest suite, including RLS-specific tests

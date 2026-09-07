@@ -6,14 +6,29 @@ from sqlalchemy.exc import IntegrityError, ProgrammingError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_authenticated_db, get_current_user
+from app.core.ws_tickets import TICKET_TTL_SECONDS, tickets
 from app.models.message import Message
 from app.models.room import Room
 from app.models.room_member import RoomMember
 from app.models.user import User
 from app.schemas.message import MessageOut
 from app.schemas.room import RoomCreate, RoomJoinRequest, RoomMemberOut, RoomOut
+from app.schemas.ws import WsTicketOut
 
 router = APIRouter(prefix="/rooms", tags=["rooms"])
+
+
+async def _require_membership(
+    db: AsyncSession, room_id: uuid.UUID, user_id: uuid.UUID
+) -> RoomMember:
+    """Fetch the caller's membership row, or 404 if they're not a member (README: deliberately 404, not 403, so the room's existence isn't confirmed to a non-member)."""
+    result = await db.execute(
+        select(RoomMember).where(RoomMember.room_id == room_id, RoomMember.user_id == user_id)
+    )
+    membership = result.scalar_one_or_none()
+    if membership is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Room not found")
+    return membership
 
 
 @router.post("", response_model=RoomOut, status_code=status.HTTP_201_CREATED)
@@ -126,13 +141,7 @@ async def list_messages(
     # identical to "you're a member of an empty room." RLS still enforces
     # this independently on the messages_select policy either way (FR-8);
     # this is purely about giving the caller a sane HTTP response.
-    membership = await db.execute(
-        select(RoomMember).where(
-            RoomMember.room_id == room_id, RoomMember.user_id == current_user.id
-        )
-    )
-    if membership.scalar_one_or_none() is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Room not found")
+    await _require_membership(db, room_id, current_user.id)
 
     # Pagination: offset-based, newest-first (FR-4). `offset` is page number
     # * limit from the caller's perspective; fine at this scale, though a
@@ -145,3 +154,18 @@ async def list_messages(
         .offset(offset)
     )
     return list(result.scalars().all())
+
+
+@router.post("/{room_id}/ws-ticket", response_model=WsTicketOut)
+async def create_ws_ticket(
+    room_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_authenticated_db),
+) -> WsTicketOut:
+    # Membership is proven here, once, under normal JWT auth (spec 5.2).
+    # The WebSocket handshake itself only has to trust the ticket this
+    # hands back, not re-derive membership from scratch.
+    await _require_membership(db, room_id, current_user.id)
+
+    ticket = tickets.issue(current_user.id, room_id)
+    return WsTicketOut(ticket=ticket, expires_in=TICKET_TTL_SECONDS)

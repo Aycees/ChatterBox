@@ -64,7 +64,7 @@ By the end of this project you should be able to:
 | FR-2 | Create Rooms | Authenticated users can create a chat room with a name and an `is_private` flag. The creator is automatically added to `room_members` as the room owner. |
 | FR-3 | Join / List Rooms | Users can browse and join public rooms. Private rooms can only be joined if explicitly added by an existing member. Users can list only the rooms they belong to. |
 | FR-4 | Message History (REST) | `GET /rooms/{room_id}/messages` returns paginated history, newest-first, but only if the requester is a member of that room. |
-| FR-5 | Real-Time Messaging (WebSocket) | Clients connect to a per-room WebSocket endpoint, authenticated via their JWT. The server verifies room membership before accepting the connection, then persists and broadcasts every message to all currently-connected members of that room. |
+| FR-5 | Real-Time Messaging (WebSocket) | Clients connect to a per-room WebSocket endpoint, authenticated via a short-lived, single-use ticket obtained from an authenticated REST call. The server verifies the ticket (and, transitively, room membership) before accepting the connection, then persists and broadcasts every message to all currently-connected members of that room. |
 | FR-6 | Presence | Track which members are currently connected to a room; broadcast join/leave events to the room when a client connects or disconnects. |
 | FR-7 | Typing Indicator (bonus) | An ephemeral WebSocket event (not persisted to the database) that tells other room members someone is typing. |
 | FR-8 | RLS-Enforced Data Access | Row-Level Security policies on `rooms`, `room_members`, and `messages` guarantee that a query executed as a given user can only ever return rows that user is entitled to see — enforced by Postgres, independent of application code. |
@@ -122,13 +122,21 @@ Write these as real `CREATE POLICY` statements in an Alembic migration — not a
 | GET | `/rooms/public` | List joinable public rooms. |
 | POST | `/rooms/{room_id}/join` | Join a public room, or accept membership in a private one. |
 | GET | `/rooms/{room_id}/messages` | Paginated history (member-only, enforced by RLS). |
+| POST | `/rooms/{room_id}/ws-ticket` | Mint a short-lived, single-use ticket for opening this room's WebSocket connection (member-only). |
 
 ### 5.2 WebSocket endpoint
 
-`WS /ws/rooms/{room_id}?token=<jwt>`
+`WS /ws/rooms/{room_id}?ticket=<ticket>`
 
-- On connect: validate the JWT, then verify room membership **before** calling `accept()`. Reject with an appropriate close code if either check fails.
-- All messages exchanged over the socket use a single JSON envelope so the client only needs one parser.
+A raw, long-lived JWT is deliberately kept out of the WebSocket URL. Browsers can't attach an `Authorization` header to a WS handshake, and anything living in a query string tends to end up in access logs, reverse-proxy logs, and browser history, an unnecessary exposure for a credential that's otherwise never put in a URL anywhere else in this API. Instead, connecting is a two-step handshake:
+
+1. The client calls `POST /rooms/{room_id}/ws-ticket` first, a normal authenticated REST request (JWT in the `Authorization` header, as usual). The server checks room membership right there and, if the caller belongs to the room, returns a short-lived (~30s), single-use `ticket` string.
+2. The client immediately opens `WS /ws/rooms/{room_id}?ticket=<ticket>`. The server looks the ticket up, confirms it matches this `room_id` and hasn't expired or already been consumed, then consumes it (deletes it) regardless of whether the check passed or failed, so a ticket can never be replayed.
+3. On any failure (missing ticket, expired, wrong room, already used), the server closes the connection **before** calling `accept()`. On success, room membership was already proven at step 1, so `accept()` proceeds directly.
+
+Tickets are tracked in memory, in the same process as the WebSocket connection registry, so, like that registry, they don't survive a restart and aren't shared across multiple API processes (see section 8's Redis stretch goal for what fixes that).
+
+All messages exchanged over the socket use a single JSON envelope so the client only needs one parser.
 
 ```json
 { "type": "message", "payload": { "content": "hey team" } }
@@ -155,7 +163,7 @@ Self-grade against this checklist before calling the project complete.
 
 - [ ] Registering with a duplicate email or username returns 409, not 500.
 - [ ] Passwords are hashed with bcrypt; no endpoint ever returns a password or `password_hash`.
-- [ ] Every protected REST route and the WebSocket handshake reject missing/invalid/expired JWTs with 401 (or the equivalent WS close code).
+- [ ] Every protected REST route, including `POST /rooms/{room_id}/ws-ticket`, rejects a missing/invalid/expired JWT with 401. The WebSocket handshake rejects a missing/invalid/expired/already-used/wrong-room ticket with the equivalent WS close code.
 - [ ] `GET /rooms/{room_id}/messages` returns 403 (or an empty result set, documented either way) for a non-member.
 - [ ] **RLS proof:** connecting to Postgres directly as the `app_user` role and running a raw `SELECT` against `messages` or `rooms` for a room the session's `app.current_user_id` does not belong to returns zero rows — even though no application code ran.
 - [ ] A superuser/table-owner connection is confirmed to still see everything, demonstrating you understand why the app must connect as a restricted role.
