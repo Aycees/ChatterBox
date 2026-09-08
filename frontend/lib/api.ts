@@ -1,6 +1,9 @@
 import { getToken } from "@/lib/token";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+// Same origin, ws(s) scheme -- the WebSocket endpoint (spec 5.2) lives on
+// this same FastAPI app, just a different protocol.
+export const WS_URL = API_URL.replace(/^http/, "ws");
 
 // FastAPI puts the human-readable error in `detail`, either a string
 // (HTTPException) or a list of pydantic validation-error objects (422).
