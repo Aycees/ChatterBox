@@ -1,4 +1,4 @@
-import { getToken } from "@/lib/token";
+import { clearToken, getToken } from "@/lib/token";
 
 export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 // Same origin, ws(s) scheme -- the WebSocket endpoint (spec 5.2) lives on
@@ -50,6 +50,16 @@ export async function apiFetch<T>(path: string, options: RequestInit = {}): Prom
   const body = await response.json().catch(() => null);
 
   if (!response.ok) {
+    // 401 here always means "the JWT is missing, invalid, or expired"
+    // (backend/app/api/deps.py:get_current_user) -- never "wrong password"
+    // (that's a 401 from /auth/login itself, before any token exists, so
+    // clearing an already-empty token is a harmless no-op there). Clearing
+    // it lets the existing reactive plumbing do the rest: auth-context.tsx
+    // reads the token via useSyncExternalStore, so this update propagates
+    // to it automatically, and app/(protected)/layout.tsx's guard effect
+    // redirects to /login as soon as it sees the token go missing -- no
+    // separate "handle session expiry" path needed.
+    if (response.status === 401) clearToken();
     throw new ApiError(response.status, body?.detail);
   }
 

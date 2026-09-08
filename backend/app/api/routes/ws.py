@@ -77,7 +77,25 @@ async def room_socket(websocket: WebSocket, room_id: uuid.UUID) -> None:
         return
 
     await websocket.accept()
-    manager.connect(room_id, websocket)
+
+    # Snapshot who's already online *before* adding this connection, so a
+    # client that joins after everyone else can still learn who's already
+    # here. The wire format stays exactly spec 5.2's "presence" envelope --
+    # this just replays one per already-online user directly to the new
+    # connection, rather than adding a new envelope type; a client can't
+    # tell a backfilled "online" apart from a live one, and doesn't need
+    # to. Without this, a client only ever learns about join/leave deltas
+    # that happen *after* it connects, so its own view of "who's online"
+    # silently understates reality for anyone who joined a room already in
+    # progress.
+    already_online = manager.online_user_ids(room_id) - {user.id}
+    manager.connect(room_id, websocket, user.id)
+
+    for other_user_id in already_online:
+        await websocket.send_json(
+            {"type": "presence", "payload": {"user_id": str(other_user_id), "status": "online"}}
+        )
+
     await manager.broadcast(
         room_id,
         {"type": "presence", "payload": {"user_id": str(user.id), "status": "online"}},

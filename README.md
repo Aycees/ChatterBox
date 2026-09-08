@@ -20,7 +20,8 @@ Full requirements and acceptance criteria live in [`ChatterBox_Project_Spec.md`]
 | Auth | PyJWT + bcrypt |
 | Testing | pytest, pytest-asyncio, httpx.AsyncClient |
 | Containers | Docker + docker-compose |
-| Frontend | Next.js (React) + TanStack Query |
+| Frontend | Next.js (React) + TanStack Query + Zod |
+| Frontend testing | Vitest + React Testing Library |
 
 ## Project status
 
@@ -32,15 +33,21 @@ Implemented so far:
 - Room creation, joining, listing (own rooms and public rooms), and paginated message history (Phase 3)
 - Automated test suite covering the auth flow, room membership rules, and RLS-specific tests proving policies hold even against a raw `app_user` connection (unit + integration)
 - WebSocket real-time core: `/ws/rooms/{room_id}` with the auth-before-`accept()` ticket flow, an in-memory connection manager for fan-out, and `message`/`typing`/`presence` events over the spec's JSON envelope (Phase 4)
-- Automated WebSocket tests (`tests/test_ws.py`): ticket rejection paths (missing, wrong-room, reused), message round-trip + persistence, typing relay excluding the sender, and unhandled-event-type error handling
+- Automated WebSocket tests (`tests/test_ws.py`): ticket rejection paths (missing, wrong-room, reused), message round-trip + persistence, typing relay excluding the sender, presence backfill for a client that joins a room already in progress, and unhandled-event-type error handling
+- Frontend (Phase 5): auth pages (register/login, Zod-validated), a route-group layout that gates every page under it on being logged in, a rooms list (create/join/list own + public rooms), and a live chat view that does the ticket handshake and drives the room over a native `WebSocket` (message send/receive, typing indicator, presence). A 401 from any API call (expired/invalid JWT) clears the stored token and the app reacts by routing back to `/login` on its own, no separate "handle session expiry" code path
+- Frontend test suite (Vitest + React Testing Library): validation schemas, the API client (auth header attachment, error-message parsing, 401-clears-token behavior), token storage (including cross-tab `storage` events), message-history pagination, the register form, and the WebSocket hook (ticket handshake, presence, typing, outgoing wire format) against a fake `WebSocket`
 
-Not yet implemented: the frontend (Phase 5). See section 6 of the spec for the full milestone breakdown.
+Known gaps, not yet implemented:
+- The WebSocket client doesn't reconnect on an unexpected drop, it just reports "Disconnected"
+- `docker-compose.yml` doesn't run the frontend (not required by the spec's acceptance criteria in section 7, only Postgres + API are)
+
+See section 6 of the spec for the full milestone breakdown.
 
 ## Prerequisites
 
 - Python 3.11+
 - Docker + Docker Compose
-- Node.js (for the frontend, once it's built out)
+- Node.js 20+ and pnpm (for the frontend)
 
 ## Setup
 
@@ -84,15 +91,37 @@ Not yet implemented: the frontend (Phase 5). See section 6 of the spec for the f
 
    This is what `DATABASE_URL`/`APP_DATABASE_URL` in `.env` point at by default (`localhost:5433`, the host-mapped port). The containerized `api` service in `docker-compose.yml` overrides both to reach Postgres over the internal Docker network (`postgres:5432`) instead, so the same `.env` works for either path without editing it.
 
+3. **Run the frontend**
+
+   The backend needs `CORS_ORIGINS` (in `.env`, defaults to `["http://localhost:3000"]`) to include wherever the frontend dev server runs, or the browser will block every request to the API.
+
+   ```bash
+   cd frontend
+   cp .env.example .env.local   # NEXT_PUBLIC_API_URL, defaults to http://localhost:8000
+   pnpm install
+   pnpm dev
+   ```
+
+   The app is then at `http://localhost:3000`.
+
 ## Running tests
 
-From `backend/`, with the virtual environment active and Postgres running:
+**Backend** -- from `backend/`, with the virtual environment active and Postgres running:
 
 ```bash
 pytest tests/ -v
 ```
 
 Tests run against the same database configured in `.env`. Each test cleans up the rows it creates (see `tests/conftest.py`'s `_clean_tables` fixture), so it's safe to run repeatedly against your local dev database.
+
+**Frontend** -- from `frontend/`:
+
+```bash
+pnpm test          # one-shot run
+pnpm test:watch    # watch mode
+```
+
+These are unit/component tests (Vitest + jsdom + React Testing Library); nothing here needs the backend or Postgres running, `fetch` and `WebSocket` are mocked per test.
 
 ## API endpoints (implemented)
 
@@ -128,6 +157,12 @@ backend/
     main.py       # FastAPI app entrypoint
   alembic/         # migrations, including app_user role/grants and RLS policies
   tests/           # pytest suite, including RLS-specific tests
-docker-compose.yml # Postgres service
-frontend/          # Next.js app (scaffolded, not yet built out)
+docker-compose.yml # Postgres + API services
+frontend/
+  app/
+    (protected)/   # route group: layout.tsx gates everything under it on being logged in
+      page.tsx       # rooms list (create/join/list)
+      rooms/[roomId]/page.tsx  # chat view (WS ticket handshake, messages, typing, presence)
+    login/, register/         # public auth pages, outside the (protected) group
+  lib/             # api client, auth context, token storage, validation schemas, room/message/WS hooks
 ```

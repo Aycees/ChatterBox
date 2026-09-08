@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiError, apiFetch } from "@/lib/api";
-import { clearToken, setToken } from "@/lib/token";
+import { clearToken, getToken, setToken } from "@/lib/token";
 
 function fakeResponse(status: number, body: unknown): Response {
   return {
@@ -89,5 +89,23 @@ describe("apiFetch", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     await expect(apiFetch("/anything")).rejects.toBeInstanceOf(ApiError);
+  });
+
+  it("clears the stored token on a 401 -- always a missing/invalid/expired JWT, per get_current_user", async () => {
+    setToken("a-now-expired-jwt");
+    const fetchMock = vi.fn().mockResolvedValue(fakeResponse(401, { detail: "Could not validate credentials" }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(apiFetch("/rooms")).rejects.toBeInstanceOf(ApiError);
+    expect(getToken()).toBeNull();
+  });
+
+  it("leaves the token alone on non-401 errors", async () => {
+    setToken("still-valid");
+    const fetchMock = vi.fn().mockResolvedValue(fakeResponse(403, { detail: "Not allowed" }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(apiFetch("/rooms/x/join")).rejects.toBeInstanceOf(ApiError);
+    expect(getToken()).toBe("still-valid");
   });
 });
