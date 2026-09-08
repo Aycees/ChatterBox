@@ -102,6 +102,16 @@ async def join_room(
     # private rooms, only "an existing member adds you."
     target_user_id = join_in.user_id or current_user.id
 
+    if join_in.user_id is not None:
+        # Without this, inviting a made-up user_id hits the same FK
+        # violation as an actual duplicate membership below, and comes back
+        # as a misleading 409 "already a member" instead of "no such user."
+        target_exists = await db.execute(select(User.id).where(User.id == target_user_id))
+        if target_exists.scalar_one_or_none() is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+            )
+
     membership = RoomMember(room_id=room_id, user_id=target_user_id, role="member")
     db.add(membership)
     try:

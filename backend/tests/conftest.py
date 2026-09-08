@@ -1,11 +1,56 @@
+import uuid
+
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.core.config import settings
+from app.core.security import create_access_token, hash_password
 from app.db.session import async_session_maker
 from app.main import app
+from app.models.room import Room
+from app.models.room_member import RoomMember
+from app.models.user import User
+
+# ---- setup helpers (write directly via the admin/owner session, bypassing
+# both RLS and the API, so each test only exercises the one thing it's
+# actually testing). Shared across test modules since both REST and
+# WebSocket tests need the same "make me a user/room/membership" setup. ----
+
+
+async def make_user(admin_db_session, **overrides):
+    unique = uuid.uuid4().hex[:8]
+    defaults = {
+        "id": uuid.uuid4(),
+        "username": f"user-{unique}",
+        "email": f"{unique}@example.com",
+        "password_hash": hash_password("irrelevant"),
+    }
+    user = User(**{**defaults, **overrides})
+    admin_db_session.add(user)
+    await admin_db_session.commit()
+    await admin_db_session.refresh(user)
+    return user
+
+
+def auth_headers(user):
+    return {"Authorization": f"Bearer {create_access_token(str(user.id))}"}
+
+
+async def make_room(admin_db_session, owner, is_private=False, name="Room"):
+    room = Room(id=uuid.uuid4(), name=name, is_private=is_private, owner_id=owner.id)
+    admin_db_session.add(room)
+    await admin_db_session.commit()
+    await admin_db_session.refresh(room)
+    return room
+
+
+async def add_member(admin_db_session, room, user, role="member"):
+    membership = RoomMember(room_id=room.id, user_id=user.id, role=role)
+    admin_db_session.add(membership)
+    await admin_db_session.commit()
+    return membership
 
 # Cleanup needs to run as the owner role, not app_user: app_user only has
 # DELETE granted on `rooms` (least privilege, per section 4.4), and RLS is

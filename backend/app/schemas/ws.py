@@ -11,7 +11,7 @@ class IncomingEnvelope(BaseModel):
 class MessagePayload(BaseModel):
     """Payload shape required for a `type: "message"` envelope."""
 
-    content: str = Field(min_length=1)
+    content: str = Field(min_length=1, max_length=4000)
 
 
 class WsTicketOut(BaseModel):

@@ -98,7 +98,9 @@ async def room_socket(websocket: WebSocket, room_id: uuid.UUID) -> None:
                 try:
                     message_payload = MessagePayload.model_validate(envelope.payload)
                 except ValidationError:
-                    await _send_error(websocket, "message payload requires non-empty content")
+                    await _send_error(
+                        websocket, "content must be 1-4000 characters"
+                    )
                     continue
 
                 message = await _persist_message(user.id, room_id, message_payload.content)

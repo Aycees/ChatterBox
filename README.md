@@ -25,15 +25,16 @@ Full requirements and acceptance criteria live in [`ChatterBox_Project_Spec.md`]
 ## Project status
 
 Implemented so far:
-- Project scaffold, Docker Compose for Postgres, Alembic wired up (Phase 1)
+- Project scaffold, Docker Compose for Postgres **and** the API (`backend/Dockerfile`, migrations run automatically on container start), Alembic wired up (Phase 1)
 - `users`, `rooms`, `room_members`, `messages` tables (Phase 2/3 data model)
 - Registration, login, JWT issuing/verification, `GET /auth/me` (Phase 2)
 - `app_user` restricted role with least-privilege grants, `FORCE ROW LEVEL SECURITY`, and the full policy set from spec section 4.4 on `rooms`, `room_members`, and `messages` (Phase 3)
 - Room creation, joining, listing (own rooms and public rooms), and paginated message history (Phase 3)
 - Automated test suite covering the auth flow, room membership rules, and RLS-specific tests proving policies hold even against a raw `app_user` connection (unit + integration)
-- WebSocket real-time core: `/ws/rooms/{room_id}` with the auth-before-`accept()` ticket flow, an in-memory connection manager for fan-out, and `message`/`typing`/`presence` events over the spec's JSON envelope (Phase 4). Verified manually end-to-end; **not yet covered by the automated pytest suite** (websocket testing needs a different client setup than the existing `httpx.AsyncClient` tests use).
+- WebSocket real-time core: `/ws/rooms/{room_id}` with the auth-before-`accept()` ticket flow, an in-memory connection manager for fan-out, and `message`/`typing`/`presence` events over the spec's JSON envelope (Phase 4)
+- Automated WebSocket tests (`tests/test_ws.py`): ticket rejection paths (missing, wrong-room, reused), message round-trip + persistence, typing relay excluding the sender, and unhandled-event-type error handling
 
-Not yet implemented: automated tests for the WebSocket layer, and the frontend (Phase 5). See section 6 of the spec for the full milestone breakdown.
+Not yet implemented: the frontend (Phase 5). See section 6 of the spec for the full milestone breakdown.
 
 ## Prerequisites
 
@@ -61,34 +62,27 @@ Not yet implemented: automated tests for the WebSocket layer, and the frontend (
    | `JWT_ALGORITHM` | JWT signing algorithm (defaults to `HS256`) |
    | `ACCESS_TOKEN_EXPIRE_MINUTES` | How long an access token stays valid |
 
-2. **Start Postgres**
+2. **Run everything with Docker Compose**
 
    ```bash
-   docker compose up -d postgres
+   docker compose up --build
    ```
 
-3. **Set up the backend virtual environment and install dependencies**
+   This starts Postgres and the API together. The API container waits for Postgres to report healthy, then runs `alembic upgrade head` automatically before starting Uvicorn, no separate migration step needed. The API is then at `http://127.0.0.1:8000` (docs at `/docs`), Postgres at `localhost:5433`.
+
+   **Local dev alternative, without Docker for the API:** if you'd rather run the API directly on your machine (hot-reload on save, easier debugging) while still using Postgres in a container:
 
    ```bash
+   docker compose up -d postgres   # Postgres only
    cd backend
    python3 -m venv .venv
    source .venv/bin/activate
    pip install -r requirements.txt
-   ```
-
-4. **Run database migrations**
-
-   ```bash
    alembic upgrade head
-   ```
-
-5. **Run the API**
-
-   ```bash
    uvicorn app.main:app --reload
    ```
 
-   The API is now at `http://127.0.0.1:8000`, with interactive docs at `http://127.0.0.1:8000/docs`.
+   This is what `DATABASE_URL`/`APP_DATABASE_URL` in `.env` point at by default (`localhost:5433`, the host-mapped port). The containerized `api` service in `docker-compose.yml` overrides both to reach Postgres over the internal Docker network (`postgres:5432`) instead, so the same `.env` works for either path without editing it.
 
 ## Running tests
 

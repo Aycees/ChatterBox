@@ -12,6 +12,15 @@ from app.schemas.user import UserCreate, UserLogin, UserOut
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
+# A real bcrypt hash to compare against when no user matches the given
+# email, so login() does the same amount of work either way. Without this,
+# `user is None or not verify_password(...)` short-circuits and skips
+# bcrypt entirely for a nonexistent email, making "real email, wrong
+# password" measurably slower than "email doesn't exist" -- an email
+# enumeration side-channel via response timing, same-body test above
+# notwithstanding (that only covers the response content, not its timing).
+_DUMMY_PASSWORD_HASH = hash_password("not-a-real-password-just-for-timing-safety")
+
 
 @router.post("/register", response_model=UserOut, status_code=status.HTTP_201_CREATED)
 async def register(user_in: UserCreate, db: AsyncSession = Depends(get_db)) -> User:
@@ -38,7 +47,10 @@ async def login(credentials: UserLogin, db: AsyncSession = Depends(get_db)) -> T
     result = await db.execute(select(User).where(User.email == credentials.email))
     user = result.scalar_one_or_none()
 
-    if user is None or not verify_password(credentials.password, user.password_hash):
+    password_hash = user.password_hash if user is not None else _DUMMY_PASSWORD_HASH
+    password_ok = verify_password(credentials.password, password_hash)
+
+    if user is None or not password_ok:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",

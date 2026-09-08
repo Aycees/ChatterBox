@@ -5,49 +5,14 @@ import pytest
 from sqlalchemy import select, text
 from sqlalchemy.exc import DBAPIError
 
-from app.core.security import create_access_token, hash_password
 from app.models.message import Message
 from app.models.room import Room
 from app.models.room_member import RoomMember
 from app.models.user import User
+from conftest import add_member, auth_headers, make_room, make_user
 
-# ---- setup helpers (write directly via the admin/owner session, bypassing
-# both RLS and the API, so each test only exercises the one thing it's
-# actually testing) ----
-
-
-async def make_user(admin_db_session, **overrides):
-    unique = uuid.uuid4().hex[:8]
-    defaults = {
-        "id": uuid.uuid4(),
-        "username": f"user-{unique}",
-        "email": f"{unique}@example.com",
-        "password_hash": hash_password("irrelevant"),
-    }
-    user = User(**{**defaults, **overrides})
-    admin_db_session.add(user)
-    await admin_db_session.commit()
-    await admin_db_session.refresh(user)
-    return user
-
-
-def auth_headers(user):
-    return {"Authorization": f"Bearer {create_access_token(str(user.id))}"}
-
-
-async def make_room(admin_db_session, owner, is_private=False, name="Room"):
-    room = Room(id=uuid.uuid4(), name=name, is_private=is_private, owner_id=owner.id)
-    admin_db_session.add(room)
-    await admin_db_session.commit()
-    await admin_db_session.refresh(room)
-    return room
-
-
-async def add_member(admin_db_session, room, user, role="member"):
-    membership = RoomMember(room_id=room.id, user_id=user.id, role=role)
-    admin_db_session.add(membership)
-    await admin_db_session.commit()
-    return membership
+# ---- setup helpers specific to this file (make_user/make_room/add_member/
+# auth_headers live in conftest.py now, shared with test_ws.py) ----
 
 
 async def make_message(admin_db_session, room, sender, content="hello", created_at=None):
@@ -201,6 +166,20 @@ async def test_non_member_cannot_add_another_user_to_room(client, admin_db_sessi
         headers=auth_headers(outsider),
     )
     assert response.status_code == 403
+
+
+async def test_inviting_nonexistent_user_returns_404_not_409(client, admin_db_session):
+    owner = await make_user(admin_db_session)
+    room = await make_room(admin_db_session, owner=owner, is_private=True)
+    await add_member(admin_db_session, room, owner, role="owner")
+
+    made_up_user_id = uuid.uuid4()
+    response = await client.post(
+        f"/rooms/{room.id}/join",
+        json={"user_id": str(made_up_user_id)},
+        headers=auth_headers(owner),
+    )
+    assert response.status_code == 404
 
 
 # ---- GET /rooms/{room_id}/messages ----
