@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { flattenMessagePages, useRoomMessages } from "@/lib/use-room-messages";
@@ -64,7 +65,15 @@ export default function RoomPage() {
   return (
     <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col px-4 py-4">
       <div className="mb-3 flex items-center justify-between">
-        <h1 className="text-lg font-semibold text-black dark:text-zinc-50">{roomName}</h1>
+        <div className="flex items-center gap-3">
+          <Link
+            href="/"
+            className="text-sm text-zinc-500 hover:text-black dark:hover:text-zinc-50"
+          >
+            &larr; Back
+          </Link>
+          <h1 className="text-lg font-semibold text-black dark:text-zinc-50">{roomName}</h1>
+        </div>
         <span className="text-xs text-zinc-500">
           {connectionState === "open" && `${onlineUserIds.size} online`}
           {connectionState === "connecting" && "Connecting..."}
