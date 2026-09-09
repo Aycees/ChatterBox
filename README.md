@@ -4,7 +4,7 @@ A multi-room, real-time chat system built with FastAPI, PostgreSQL, and WebSocke
 
 The core exercise: authorization isn't just checked in application code, it's enforced **inside PostgreSQL** with Row-Level Security (RLS) policies, so a user cannot read a row they don't have access to even if the API layer has a bug.
 
-Full requirements and acceptance criteria live in [`ChatterBox_Project_Spec.md`](ChatterBox_Project_Spec.md).
+Full requirements and acceptance criteria live in [`ChatterBox_Project_Spec.md`](ChatterBox_Project_Spec.md). RLS design decisions and trade-offs are written up in [`RLS_DESIGN.md`](RLS_DESIGN.md).
 
 ## Tech stack
 
