@@ -34,5 +34,19 @@ services:
     ports:
       - "8000:8000"
 
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        # Baked into the client bundle at build time (see frontend/
+        # Dockerfile) -- the browser calls this directly, so it has to be
+        # the host-reachable URL (via api's port mapping above), not the
+        # in-network service name.
+        NEXT_PUBLIC_API_URL: http://localhost:8000
+    depends_on:
+      - api
+    ports:
+      - "3000:3000"
+
 volumes:
   pgdata:

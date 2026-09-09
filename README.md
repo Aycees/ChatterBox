@@ -36,10 +36,10 @@ Implemented so far:
 - Automated WebSocket tests (`tests/test_ws.py`): ticket rejection paths (missing, wrong-room, reused), message round-trip + persistence, typing relay excluding the sender, presence backfill for a client that joins a room already in progress, and unhandled-event-type error handling
 - Frontend (Phase 5): auth pages (register/login, Zod-validated), a route-group layout that gates every page under it on being logged in, a rooms list (create/join/list own + public rooms), and a live chat view that does the ticket handshake and drives the room over a native `WebSocket` (message send/receive, typing indicator, presence). A 401 from any API call (expired/invalid JWT) clears the stored token and the app reacts by routing back to `/login` on its own, no separate "handle session expiry" code path
 - Frontend test suite (Vitest + React Testing Library): validation schemas, the API client (auth header attachment, error-message parsing, 401-clears-token behavior), token storage (including cross-tab `storage` events), message-history pagination, the register form, and the WebSocket hook (ticket handshake, presence, typing, outgoing wire format) against a fake `WebSocket`
+- `docker-compose.yml` runs all three services -- Postgres, API, and a production build of the frontend -- so `docker compose up --build` is genuinely one command end to end (Phase 5's "done" bar)
 
-Known gaps, not yet implemented:
+Known gap, not yet implemented:
 - The WebSocket client doesn't reconnect on an unexpected drop, it just reports "Disconnected"
-- `docker-compose.yml` doesn't run the frontend (not required by the spec's acceptance criteria in section 7, only Postgres + API are)
 
 See section 6 of the spec for the full milestone breakdown.
 
@@ -75,34 +75,29 @@ See section 6 of the spec for the full milestone breakdown.
    docker compose up --build
    ```
 
-   This starts Postgres and the API together. The API container waits for Postgres to report healthy, then runs `alembic upgrade head` automatically before starting Uvicorn, no separate migration step needed. The API is then at `http://127.0.0.1:8000` (docs at `/docs`), Postgres at `localhost:5433`.
+   This starts Postgres, the API, and the frontend together, end to end, one command. Postgres reports healthy before the API starts; the API container then runs `alembic upgrade head` automatically before starting Uvicorn, no separate migration step needed; the frontend runs a production build (`next build && next start`). Once it's up: the app is at `http://localhost:3000`, the API at `http://localhost:8000` (docs at `/docs`), Postgres at `localhost:5433`.
 
-   **Local dev alternative, without Docker for the API:** if you'd rather run the API directly on your machine (hot-reload on save, easier debugging) while still using Postgres in a container:
+   **Local dev alternative:** if you'd rather run the API and/or frontend directly on your machine (hot-reload on save, easier debugging) while still using Postgres in a container:
 
    ```bash
    docker compose up -d postgres   # Postgres only
+
+   # backend
    cd backend
    python3 -m venv .venv
    source .venv/bin/activate
    pip install -r requirements.txt
    alembic upgrade head
    uvicorn app.main:app --reload
-   ```
 
-   This is what `DATABASE_URL`/`APP_DATABASE_URL` in `.env` point at by default (`localhost:5433`, the host-mapped port). The containerized `api` service in `docker-compose.yml` overrides both to reach Postgres over the internal Docker network (`postgres:5432`) instead, so the same `.env` works for either path without editing it.
-
-3. **Run the frontend**
-
-   The backend needs `CORS_ORIGINS` (in `.env`, defaults to `["http://localhost:3000"]`) to include wherever the frontend dev server runs, or the browser will block every request to the API.
-
-   ```bash
+   # frontend, in a separate terminal
    cd frontend
    cp .env.example .env.local   # NEXT_PUBLIC_API_URL, defaults to http://localhost:8000
    pnpm install
    pnpm dev
    ```
 
-   The app is then at `http://localhost:3000`.
+   This is what `DATABASE_URL`/`APP_DATABASE_URL` in `.env` point at by default (`localhost:5433`, the host-mapped port). The containerized `api` service in `docker-compose.yml` overrides both to reach Postgres over the internal Docker network (`postgres:5432`) instead, so the same `.env` works for either path without editing it. The backend also needs `CORS_ORIGINS` (in `.env`, defaults to `["http://localhost:3000"]`) to include wherever the frontend actually runs, or the browser blocks every request to the API, already covered by the default for both paths above.
 
 ## Running tests
 
@@ -157,7 +152,7 @@ backend/
     main.py       # FastAPI app entrypoint
   alembic/         # migrations, including app_user role/grants and RLS policies
   tests/           # pytest suite, including RLS-specific tests
-docker-compose.yml # Postgres + API services
+docker-compose.yml # Postgres + API + frontend services
 frontend/
   app/
     (protected)/   # route group: layout.tsx gates everything under it on being logged in
