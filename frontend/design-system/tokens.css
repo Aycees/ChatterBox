@@ -1,0 +1,167 @@
+/*
+ * ChatterBox design tokens — Tailwind v4 CSS-first theme extension.
+ *
+ * This is a drop-in supplement to frontend/app/globals.css, not a
+ * replacement. It follows the exact pattern already in that file
+ * (plain :root variables mapped into Tailwind's theme via `@theme inline`)
+ * so it merges cleanly instead of fighting the existing setup.
+ *
+ * How to apply (see DESIGN_SYSTEM.md, "Implementation Handoff", Phase 1):
+ *   1. Keep the `@import "tailwindcss";` line at the top of globals.css.
+ *   2. Add the `@theme { ... }` block below globals.css's existing rules
+ *      (it registers the new --color-brand-* scale so utilities like
+ *      `bg-brand-600` become available).
+ *   3. Replace the existing `:root { --background / --foreground }` block
+ *      with the extended one below (it's additive — --background and
+ *      --foreground keep the same names and light-mode values).
+ *   4. Replace the existing `@theme inline { ... }` block with the
+ *      extended one below.
+ *   5. Replace the dark-mode `@media (prefers-color-scheme: dark)` block.
+ *   6. Add the `body` font-family fix and the `:focus-visible` rule —
+ *      both are new, nothing to replace.
+ *
+ * Everything else in globals.css (the @import line, the overall file
+ * structure) stays as-is.
+ */
+
+/* ── 1. Brand color scale ─────────────────────────────────────────── */
+/* Registered directly in @theme (not @theme inline) so the full ramp
+   generates real utilities: bg-brand-600, border-brand-300, etc.
+   Hue 264 = blue-violet ("iris"). OKLCH keeps every step perceptually
+   even, which is why Tailwind v4 uses it for its own default palette. */
+@theme {
+  --color-brand-50: oklch(0.975 0.014 264);
+  --color-brand-100: oklch(0.950 0.028 264);
+  --color-brand-200: oklch(0.900 0.055 264);
+  --color-brand-300: oklch(0.820 0.085 264);
+  --color-brand-400: oklch(0.720 0.130 264);
+  --color-brand-500: oklch(0.620 0.170 264);
+  --color-brand-600: oklch(0.530 0.190 264);
+  --color-brand-700: oklch(0.450 0.180 264);
+  --color-brand-800: oklch(0.370 0.150 264);
+  --color-brand-900: oklch(0.300 0.120 264);
+  --color-brand-950: oklch(0.210 0.090 264);
+}
+
+/* ── 2. Semantic aliases — light (default) ───────────────────────── */
+:root {
+  --background: #ffffff;
+  --foreground: var(--color-zinc-900);
+
+  --surface: #ffffff;
+  --surface-raised: var(--color-zinc-50);
+  --surface-sunken: var(--color-zinc-100);
+
+  --border: var(--color-zinc-200);
+  --border-strong: var(--color-zinc-300);
+
+  --text-secondary: var(--color-zinc-600);
+  --text-muted: var(--color-zinc-500);
+  --text-on-brand: #ffffff;
+
+  --accent: var(--color-brand-600);
+  --accent-hover: var(--color-brand-700);
+  --accent-active: var(--color-brand-800);
+  --accent-subtle: var(--color-brand-50);
+
+  --success: var(--color-emerald-600);
+  --success-subtle: var(--color-emerald-50);
+  --warning: var(--color-amber-600);
+  --warning-subtle: var(--color-amber-50);
+  --danger: var(--color-red-600);
+  --danger-subtle: var(--color-red-50);
+  --info: var(--color-blue-600);
+
+  --focus-ring: var(--color-brand-500);
+}
+
+/* ── 3. Register the aliases as Tailwind utilities ───────────────── */
+/* `inline` = "reference this var at generation time", same technique
+   the current file already uses for --background/--foreground. This is
+   what makes bg-surface, text-text-secondary, border-border, etc. work. */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+
+  --color-surface: var(--surface);
+  --color-surface-raised: var(--surface-raised);
+  --color-surface-sunken: var(--surface-sunken);
+
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+
+  --color-text-secondary: var(--text-secondary);
+  --color-text-muted: var(--text-muted);
+  --color-text-on-brand: var(--text-on-brand);
+
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-active: var(--accent-active);
+  --color-accent-subtle: var(--accent-subtle);
+
+  --color-success: var(--success);
+  --color-success-subtle: var(--success-subtle);
+  --color-warning: var(--warning);
+  --color-warning-subtle: var(--warning-subtle);
+  --color-danger: var(--danger);
+  --color-danger-subtle: var(--danger-subtle);
+  --color-info: var(--info);
+
+  --color-focus-ring: var(--focus-ring);
+
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+/* ── 4. Dark mode — same aliases, new values ─────────────────────── */
+/* This project has no explicit theme toggle yet, so it should stay on
+   prefers-color-scheme only (do not add a [data-theme] variant unless a
+   toggle is actually built — an unused one is dead code). */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: var(--color-zinc-50);
+
+    --surface: var(--color-zinc-950);
+    --surface-raised: var(--color-zinc-900);
+    --surface-sunken: #050505;
+
+    --border: rgb(255 255 255 / 0.1);
+    --border-strong: rgb(255 255 255 / 0.16);
+
+    --text-secondary: var(--color-zinc-400);
+    --text-muted: var(--color-zinc-500);
+
+    --accent: var(--color-brand-500);
+    --accent-hover: var(--color-brand-400);
+    --accent-active: var(--color-brand-300);
+    --accent-subtle: rgb(from var(--color-brand-500) r g b / 0.14);
+
+    --success-subtle: rgb(from var(--color-emerald-500) r g b / 0.14);
+    --warning-subtle: rgb(from var(--color-amber-500) r g b / 0.14);
+    --danger-subtle: rgb(from var(--color-red-500) r g b / 0.14);
+
+    --focus-ring: var(--color-brand-400);
+  }
+}
+
+/* ── 5. Base fixes ────────────────────────────────────────────────── */
+/* globals.css currently defines --font-sans but the body rule hardcodes
+   Arial/Helvetica instead of using it — Geist is loaded via next/font in
+   layout.tsx but never actually applied. This wires it up. */
+body {
+  background: var(--color-background);
+  color: var(--color-foreground);
+  font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+}
+
+/* No interactive element in the app currently has a visible focus state
+   beyond the browser default (Tailwind's preflight resets it to nothing).
+   This is a blocking accessibility gap — see DESIGN_SYSTEM.md,
+   "Accessibility requirements". Applies to every button/input/link/summary
+   automatically; no per-component work needed. */
+:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+  border-radius: 4px;
+}

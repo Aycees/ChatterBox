@@ -4,7 +4,7 @@ A multi-room, real-time chat system built with FastAPI, PostgreSQL, and WebSocke
 
 The core exercise: authorization isn't just checked in application code, it's enforced **inside PostgreSQL** with Row-Level Security (RLS) policies, so a user cannot read a row they don't have access to even if the API layer has a bug.
 
-Full requirements and acceptance criteria live in [`ChatterBox_Project_Spec.md`](ChatterBox_Project_Spec.md).
+Full requirements and acceptance criteria live in [`ChatterBox_Project_Spec.md`](ChatterBox_Project_Spec.md). RLS design decisions and trade-offs are written up in [`RLS_DESIGN.md`](RLS_DESIGN.md).
 
 ## Tech stack
 
@@ -20,7 +20,8 @@ Full requirements and acceptance criteria live in [`ChatterBox_Project_Spec.md`]
 | Auth | PyJWT + bcrypt |
 | Testing | pytest, pytest-asyncio, httpx.AsyncClient |
 | Containers | Docker + docker-compose |
-| Frontend | Next.js (React) + TanStack Query |
+| Frontend | Next.js (React) + TanStack Query + Zod |
+| Frontend testing | Vitest + React Testing Library |
 
 ## Project status
 
@@ -32,15 +33,21 @@ Implemented so far:
 - Room creation, joining, listing (own rooms and public rooms), and paginated message history (Phase 3)
 - Automated test suite covering the auth flow, room membership rules, and RLS-specific tests proving policies hold even against a raw `app_user` connection (unit + integration)
 - WebSocket real-time core: `/ws/rooms/{room_id}` with the auth-before-`accept()` ticket flow, an in-memory connection manager for fan-out, and `message`/`typing`/`presence` events over the spec's JSON envelope (Phase 4)
-- Automated WebSocket tests (`tests/test_ws.py`): ticket rejection paths (missing, wrong-room, reused), message round-trip + persistence, typing relay excluding the sender, and unhandled-event-type error handling
+- Automated WebSocket tests (`tests/test_ws.py`): ticket rejection paths (missing, wrong-room, reused), message round-trip + persistence, typing relay excluding the sender, presence backfill for a client that joins a room already in progress, and unhandled-event-type error handling
+- Frontend (Phase 5): auth pages (register/login, Zod-validated), a route-group layout that gates every page under it on being logged in, a rooms list (create/join/list own + public rooms), and a live chat view that does the ticket handshake and drives the room over a native `WebSocket` (message send/receive, typing indicator, presence). A 401 from any API call (expired/invalid JWT) clears the stored token and the app reacts by routing back to `/login` on its own, no separate "handle session expiry" code path
+- Frontend test suite (Vitest + React Testing Library): validation schemas, the API client (auth header attachment, error-message parsing, 401-clears-token behavior), token storage (including cross-tab `storage` events), message-history pagination, the register form, and the WebSocket hook (ticket handshake, presence, typing, outgoing wire format) against a fake `WebSocket`
+- `docker-compose.yml` runs all three services -- Postgres, API, and a production build of the frontend -- so `docker compose up --build` is genuinely one command end to end (Phase 5's "done" bar)
 
-Not yet implemented: the frontend (Phase 5). See section 6 of the spec for the full milestone breakdown.
+Known gap, not yet implemented:
+- The WebSocket client doesn't reconnect on an unexpected drop, it just reports "Disconnected"
+
+See section 6 of the spec for the full milestone breakdown.
 
 ## Prerequisites
 
 - Python 3.11+
 - Docker + Docker Compose
-- Node.js (for the frontend, once it's built out)
+- Node.js 20+ and pnpm (for the frontend)
 
 ## Setup
 
@@ -68,31 +75,48 @@ Not yet implemented: the frontend (Phase 5). See section 6 of the spec for the f
    docker compose up --build
    ```
 
-   This starts Postgres and the API together. The API container waits for Postgres to report healthy, then runs `alembic upgrade head` automatically before starting Uvicorn, no separate migration step needed. The API is then at `http://127.0.0.1:8000` (docs at `/docs`), Postgres at `localhost:5433`.
+   This starts Postgres, the API, and the frontend together, end to end, one command. Postgres reports healthy before the API starts; the API container then runs `alembic upgrade head` automatically before starting Uvicorn, no separate migration step needed; the frontend runs a production build (`next build && next start`). Once it's up: the app is at `http://localhost:3000`, the API at `http://localhost:8000` (docs at `/docs`), Postgres at `localhost:5433`.
 
-   **Local dev alternative, without Docker for the API:** if you'd rather run the API directly on your machine (hot-reload on save, easier debugging) while still using Postgres in a container:
+   **Local dev alternative:** if you'd rather run the API and/or frontend directly on your machine (hot-reload on save, easier debugging) while still using Postgres in a container:
 
    ```bash
    docker compose up -d postgres   # Postgres only
+
+   # backend
    cd backend
    python3 -m venv .venv
    source .venv/bin/activate
    pip install -r requirements.txt
    alembic upgrade head
    uvicorn app.main:app --reload
+
+   # frontend, in a separate terminal
+   cd frontend
+   cp .env.example .env.local   # NEXT_PUBLIC_API_URL, defaults to http://localhost:8000
+   pnpm install
+   pnpm dev
    ```
 
-   This is what `DATABASE_URL`/`APP_DATABASE_URL` in `.env` point at by default (`localhost:5433`, the host-mapped port). The containerized `api` service in `docker-compose.yml` overrides both to reach Postgres over the internal Docker network (`postgres:5432`) instead, so the same `.env` works for either path without editing it.
+   This is what `DATABASE_URL`/`APP_DATABASE_URL` in `.env` point at by default (`localhost:5433`, the host-mapped port). The containerized `api` service in `docker-compose.yml` overrides both to reach Postgres over the internal Docker network (`postgres:5432`) instead, so the same `.env` works for either path without editing it. The backend also needs `CORS_ORIGINS` (in `.env`, defaults to `["http://localhost:3000"]`) to include wherever the frontend actually runs, or the browser blocks every request to the API, already covered by the default for both paths above.
 
 ## Running tests
 
-From `backend/`, with the virtual environment active and Postgres running:
+**Backend** -- from `backend/`, with the virtual environment active and Postgres running:
 
 ```bash
 pytest tests/ -v
 ```
 
 Tests run against the same database configured in `.env`. Each test cleans up the rows it creates (see `tests/conftest.py`'s `_clean_tables` fixture), so it's safe to run repeatedly against your local dev database.
+
+**Frontend** -- from `frontend/`:
+
+```bash
+pnpm test          # one-shot run
+pnpm test:watch    # watch mode
+```
+
+These are unit/component tests (Vitest + jsdom + React Testing Library); nothing here needs the backend or Postgres running, `fetch` and `WebSocket` are mocked per test.
 
 ## API endpoints (implemented)
 
@@ -128,6 +152,12 @@ backend/
     main.py       # FastAPI app entrypoint
   alembic/         # migrations, including app_user role/grants and RLS policies
   tests/           # pytest suite, including RLS-specific tests
-docker-compose.yml # Postgres service
-frontend/          # Next.js app (scaffolded, not yet built out)
+docker-compose.yml # Postgres + API + frontend services
+frontend/
+  app/
+    (protected)/   # route group: layout.tsx gates everything under it on being logged in
+      page.tsx       # rooms list (create/join/list)
+      rooms/[roomId]/page.tsx  # chat view (WS ticket handshake, messages, typing, presence)
+    login/, register/         # public auth pages, outside the (protected) group
+  lib/             # api client, auth context, token storage, validation schemas, room/message/WS hooks
 ```

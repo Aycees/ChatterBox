@@ -125,6 +125,15 @@ async def test_message_round_trip_is_broadcast_and_persisted(client, admin_db_se
         with client.websocket_connect(
             f"/ws/rooms/{room.id}?ticket={other_ticket}"
         ) as ws_other:
+            # `other` connects after `owner` is already online, so it first
+            # gets a backfilled presence event for `owner` (see
+            # test_presence_backfill_for_a_client_that_joins_after_others
+            # below), ahead of the broadcast of its own "online" join.
+            assert ws_other.receive_json() == {
+                "type": "presence",
+                "payload": {"user_id": str(owner.id), "status": "online"},
+            }
+
             join_event = ws_owner.receive_json()
             assert join_event == {
                 "type": "presence",
@@ -160,6 +169,50 @@ async def test_message_round_trip_is_broadcast_and_persisted(client, admin_db_se
     assert "hey team" in contents
 
 
+async def test_presence_backfill_for_a_client_that_joins_after_others(client, admin_db_session):
+    # A client's local "who's online" view is built purely from presence
+    # events it has personally received. Without a backfill, a client that
+    # joins a room already in progress would only ever learn about
+    # join/leave deltas from *after* it connected -- silently understating
+    # who's actually online. This proves the fix: on connect, a client gets
+    # one "presence: online" event per user already in the room (see
+    # ws.py's `already_online` snapshot), indistinguishable on the wire
+    # from a live one, before anything else.
+    owner, other, room = await member_and_room(admin_db_session)
+    third = await make_user(admin_db_session)
+    await add_member(admin_db_session, room, third, role="member")
+
+    owner_ticket = client.post(
+        f"/rooms/{room.id}/ws-ticket", headers=auth_headers(owner)
+    ).json()["ticket"]
+    with client.websocket_connect(f"/ws/rooms/{room.id}?ticket={owner_ticket}") as ws_owner:
+        ws_owner.receive_json()  # own presence -- no one else here yet
+
+        other_ticket = client.post(
+            f"/rooms/{room.id}/ws-ticket", headers=auth_headers(other)
+        ).json()["ticket"]
+        with client.websocket_connect(f"/ws/rooms/{room.id}?ticket={other_ticket}") as ws_other:
+            assert ws_other.receive_json() == {
+                "type": "presence",
+                "payload": {"user_id": str(owner.id), "status": "online"},
+            }
+            ws_owner.receive_json()  # other's join broadcast
+            ws_other.receive_json()  # other's own presence
+
+            third_ticket = client.post(
+                f"/rooms/{room.id}/ws-ticket", headers=auth_headers(third)
+            ).json()["ticket"]
+            with client.websocket_connect(f"/ws/rooms/{room.id}?ticket={third_ticket}") as ws_third:
+                # Order between the two backfilled events isn't guaranteed
+                # (online_user_ids() returns a set) -- only that both
+                # arrive, for the right two users, before anything else.
+                backfilled = {ws_third.receive_json()["payload"]["user_id"] for _ in range(2)}
+                assert backfilled == {str(owner.id), str(other.id)}
+
+                join_event = ws_third.receive_json()
+                assert join_event["payload"]["user_id"] == str(third.id)
+
+
 async def test_typing_is_relayed_but_not_echoed_to_sender(client, admin_db_session):
     owner, other, room = await member_and_room(admin_db_session)
     owner_ticket = client.post(
@@ -177,6 +230,7 @@ async def test_typing_is_relayed_but_not_echoed_to_sender(client, admin_db_sessi
         with client.websocket_connect(
             f"/ws/rooms/{room.id}?ticket={other_ticket}"
         ) as ws_other:
+            ws_other.receive_json()  # backfilled presence for owner, already online
             ws_owner.receive_json()  # other's join presence
             ws_other.receive_json()  # other's own presence
 
