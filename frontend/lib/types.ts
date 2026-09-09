@@ -38,6 +38,30 @@ export type RoomMemberWithUser = {
   joined_at: string;
 };
 
+// schemas/invite.py:InviteOut
+export type InviteStatus = "pending" | "accepted" | "declined";
+
+export type Invite = {
+  id: string;
+  room_id: string;
+  invited_user_id: string;
+  invited_by_id: string;
+  status: InviteStatus;
+  created_at: string;
+  responded_at: string | null;
+};
+
+// schemas/invite.py:InviteWithDetailsOut
+export type InviteWithDetails = {
+  id: string;
+  room_id: string;
+  room_name: string;
+  invited_by_id: string;
+  invited_by_username: string;
+  status: InviteStatus;
+  created_at: string;
+};
+
 // schemas/message.py:MessageOut
 export type Message = {
   id: string;

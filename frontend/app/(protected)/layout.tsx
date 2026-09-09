@@ -35,9 +35,17 @@ export default function ProtectedLayout({ children }: { children: ReactNode }) {
   return (
     <div className="flex flex-1 flex-col">
       <header className="flex items-center justify-between border-b border-black/10 px-6 py-3 dark:border-white/10">
-        <Link href="/" className="font-semibold text-black dark:text-zinc-50">
-          ChatterBox
-        </Link>
+        <div className="flex items-center gap-6">
+          <Link href="/" className="font-semibold text-black dark:text-zinc-50">
+            ChatterBox
+          </Link>
+          <Link
+            href="/users"
+            className="text-sm text-zinc-600 hover:text-black dark:text-zinc-400 dark:hover:text-zinc-50"
+          >
+            Users
+          </Link>
+        </div>
         <div className="flex items-center gap-3 text-sm">
           {user && <span className="text-zinc-600 dark:text-zinc-400">{user.username}</span>}
           <button
