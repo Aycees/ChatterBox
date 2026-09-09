@@ -10,6 +10,7 @@ from app.core.security import create_access_token, hash_password
 from app.db.session import async_session_maker
 from app.main import app
 from app.models.room import Room
+from app.models.room_invite import RoomInvite
 from app.models.room_member import RoomMember
 from app.models.user import User
 
@@ -52,6 +53,20 @@ async def add_member(admin_db_session, room, user, role="member"):
     await admin_db_session.commit()
     return membership
 
+
+async def make_invite(admin_db_session, room, invited_user, invited_by, status="pending"):
+    invite = RoomInvite(
+        id=uuid.uuid4(),
+        room_id=room.id,
+        invited_user_id=invited_user.id,
+        invited_by_id=invited_by.id,
+        status=status,
+    )
+    admin_db_session.add(invite)
+    await admin_db_session.commit()
+    await admin_db_session.refresh(invite)
+    return invite
+
 # Cleanup needs to run as the owner role, not app_user: app_user only has
 # DELETE granted on `rooms` (least privilege, per section 4.4), and RLS is
 # forced on rooms/room_members/messages, so app_user's own view of those
@@ -83,6 +98,6 @@ async def admin_db_session():
 async def _clean_tables():
     yield
     async with _admin_session_maker() as session:
-        for table in ("messages", "room_members", "rooms", "users"):
+        for table in ("messages", "room_invites", "room_members", "rooms", "users"):
             await session.execute(text(f"DELETE FROM {table}"))
         await session.commit()
