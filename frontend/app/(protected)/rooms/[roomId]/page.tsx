@@ -1,8 +1,9 @@
 "use client";
 
 import { useParams } from "next/navigation";
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { flattenMessagePages, useRoomMessages } from "@/lib/use-room-messages";
+import { useRoomMembers } from "@/lib/use-room-members";
 import { useRoomSocket } from "@/lib/use-room-socket";
 import { useCurrentUser } from "@/lib/use-current-user";
 import { useMyRooms } from "@/lib/use-rooms";
@@ -12,6 +13,10 @@ import { useMyRooms } from "@/lib/use-rooms";
 // of its own, it just relays whatever it receives.
 const TYPING_SEND_INTERVAL_MS = 1500;
 
+function initials(username: string): string {
+  return username.charAt(0).toUpperCase();
+}
+
 export default function RoomPage() {
   const { roomId } = useParams<{ roomId: string }>();
   const { data: currentUser } = useCurrentUser();
@@ -19,6 +24,7 @@ export default function RoomPage() {
   const roomName = myRooms?.find((room) => room.id === roomId)?.name ?? "Room";
 
   const messages = useRoomMessages(roomId);
+  const { data: members } = useRoomMembers(roomId);
   const { connectionState, onlineUserIds, typingUserIds, lastError, sendMessage, sendTyping } =
     useRoomSocket(roomId);
 
@@ -27,6 +33,10 @@ export default function RoomPage() {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const flatMessages = flattenMessagePages(messages.data?.pages ?? []);
+  const usernameById = useMemo(
+    () => new Map((members ?? []).map((member) => [member.user_id, member.username])),
+    [members]
+  );
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
@@ -78,10 +88,25 @@ export default function RoomPage() {
         className="flex-1 space-y-2 overflow-y-auto rounded border border-black/10 p-4 dark:border-white/10"
       >
         {messages.isPending && <p className="text-sm text-zinc-600 dark:text-zinc-400">Loading messages...</p>}
-        {flatMessages.map((message) => {
+        {flatMessages.map((message, index) => {
           const isMine = message.sender_id === currentUser?.id;
+          const previous = flatMessages[index - 1];
+          const isNewRun = !previous || previous.sender_id !== message.sender_id;
+          const showSenderInfo = isNewRun && !isMine;
+          const username = usernameById.get(message.sender_id) ?? "Unknown";
           return (
             <div key={message.id} className={`flex flex-col ${isMine ? "items-end" : "items-start"}`}>
+              {showSenderInfo && (
+                <div className="mb-1 flex items-center gap-2">
+                  <span
+                    aria-hidden="true"
+                    className="flex h-6 w-6 items-center justify-center rounded-full bg-black/10 text-xs font-medium text-black dark:bg-white/10 dark:text-zinc-50"
+                  >
+                    {initials(username)}
+                  </span>
+                  <span className="text-xs font-medium text-zinc-500">{username}</span>
+                </div>
+              )}
               <div
                 className={`max-w-[75%] rounded px-3 py-2 text-sm ${
                   isMine

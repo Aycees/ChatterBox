@@ -33,3 +33,12 @@ class RoomMemberOut(BaseModel):
     joined_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class RoomMemberWithUserOut(BaseModel):
+    user_id: uuid.UUID
+    username: str
+    role: str
+    joined_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
