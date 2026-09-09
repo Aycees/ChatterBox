@@ -30,6 +30,14 @@ export type RoomMember = {
   joined_at: string;
 };
 
+// schemas/room.py:RoomMemberWithUserOut
+export type RoomMemberWithUser = {
+  user_id: string;
+  username: string;
+  role: string;
+  joined_at: string;
+};
+
 // schemas/message.py:MessageOut
 export type Message = {
   id: string;

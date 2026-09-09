@@ -12,7 +12,13 @@ from app.models.room import Room
 from app.models.room_member import RoomMember
 from app.models.user import User
 from app.schemas.message import MessageOut
-from app.schemas.room import RoomCreate, RoomJoinRequest, RoomMemberOut, RoomOut
+from app.schemas.room import (
+    RoomCreate,
+    RoomJoinRequest,
+    RoomMemberOut,
+    RoomMemberWithUserOut,
+    RoomOut,
+)
 from app.schemas.ws import WsTicketOut
 
 router = APIRouter(prefix="/rooms", tags=["rooms"])
@@ -164,6 +170,23 @@ async def list_messages(
         .offset(offset)
     )
     return list(result.scalars().all())
+
+
+@router.get("/{room_id}/members", response_model=list[RoomMemberWithUserOut])
+async def list_members(
+    room_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_authenticated_db),
+) -> list[RoomMemberWithUserOut]:
+    # Same 404-for-non-members reasoning as list_messages.
+    await _require_membership(db, room_id, current_user.id)
+
+    result = await db.execute(
+        select(RoomMember.user_id, User.username, RoomMember.role, RoomMember.joined_at)
+        .join(User, User.id == RoomMember.user_id)
+        .where(RoomMember.room_id == room_id)
+    )
+    return [RoomMemberWithUserOut(**row._mapping) for row in result.all()]
 
 
 @router.post("/{room_id}/ws-ticket", response_model=WsTicketOut)

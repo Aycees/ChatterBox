@@ -225,6 +225,46 @@ async def test_list_messages_respects_limit(client, admin_db_session):
     assert len(response.json()) == 2
 
 
+# ---- GET /rooms/{room_id}/members ----
+
+
+async def test_list_members_requires_auth(client, admin_db_session):
+    owner = await make_user(admin_db_session)
+    room = await make_room(admin_db_session, owner=owner, is_private=False)
+    await add_member(admin_db_session, room, owner, role="owner")
+
+    response = await client.get(f"/rooms/{room.id}/members")
+    assert response.status_code == 401
+
+
+async def test_list_members_non_member_returns_404(client, admin_db_session):
+    owner = await make_user(admin_db_session)
+    room = await make_room(admin_db_session, owner=owner, is_private=True)
+    await add_member(admin_db_session, room, owner, role="owner")
+
+    outsider = await make_user(admin_db_session)
+    response = await client.get(f"/rooms/{room.id}/members", headers=auth_headers(outsider))
+    assert response.status_code == 404
+
+
+async def test_list_members_member_returns_all_members_with_usernames(client, admin_db_session):
+    owner = await make_user(admin_db_session)
+    room = await make_room(admin_db_session, owner=owner, is_private=False)
+    await add_member(admin_db_session, room, owner, role="owner")
+
+    other = await make_user(admin_db_session)
+    await add_member(admin_db_session, room, other, role="member")
+
+    response = await client.get(f"/rooms/{room.id}/members", headers=auth_headers(owner))
+    assert response.status_code == 200
+    by_user_id = {m["user_id"]: m for m in response.json()}
+    assert by_user_id.keys() == {str(owner.id), str(other.id)}
+    assert by_user_id[str(owner.id)]["username"] == owner.username
+    assert by_user_id[str(owner.id)]["role"] == "owner"
+    assert by_user_id[str(other.id)]["username"] == other.username
+    assert by_user_id[str(other.id)]["role"] == "member"
+
+
 # ---- RLS: proof Postgres enforces this independent of application code
 # (acceptance criteria, section 7) ----
 
