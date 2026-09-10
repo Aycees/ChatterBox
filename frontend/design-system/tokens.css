@@ -1,4 +1,10 @@
 /*
+ * SUPERSEDED — these tokens have been merged into app/globals.css, which is
+ * now the authoritative copy. This file is kept as the design-system record
+ * of the original handoff; if the two disagree, globals.css is what ships.
+ * See "Implementation notes" at the end of DESIGN_SYSTEM.md for the three
+ * places the shipped tokens deliberately diverge from this file.
+ *
  * ChatterBox design tokens — Tailwind v4 CSS-first theme extension.
  *
  * This is a drop-in supplement to frontend/app/globals.css, not a

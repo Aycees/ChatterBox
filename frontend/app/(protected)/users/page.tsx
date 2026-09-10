@@ -3,6 +3,13 @@
 import { useEffect, useState } from "react";
 import { useUsers } from "@/lib/use-users";
 import type { UserDirectoryEntry } from "@/lib/types";
+import { Alert } from "@/components/alert";
+import { Avatar } from "@/components/avatar";
+import { Button } from "@/components/button";
+import { EmptyState } from "@/components/empty-state";
+import { PaneHeader } from "@/components/pane-header";
+import { Skeleton } from "@/components/skeleton";
+import { PeopleIcon, SearchIcon } from "@/components/icons";
 import { InviteModal } from "./invite-modal";
 
 const SEARCH_DEBOUNCE_MS = 300;
@@ -20,47 +27,67 @@ export default function UsersPage() {
   const users = useUsers(debouncedSearch);
 
   return (
-    <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 px-4 py-8">
-      <div>
-        <h1 className="mb-4 text-lg font-semibold text-black dark:text-zinc-50">Users</h1>
-        <input
-          type="text"
-          value={search}
-          onChange={(event) => setSearch(event.target.value)}
-          placeholder="Search by username or email"
-          className="w-full rounded border border-black/10 bg-transparent px-3 py-2 text-sm dark:border-white/10"
-        />
+    <div className="flex min-w-0 flex-1 flex-col">
+      <PaneHeader title="People" icon={<PeopleIcon />} />
+
+      <div className="scroll-thin flex-1 overflow-y-auto">
+        <div className="mx-auto w-full max-w-2xl px-4 py-6 md:px-6">
+          <div className="relative mb-4">
+            <SearchIcon className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-text-muted" />
+            <input
+              type="search"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Search by username"
+              aria-label="Search people"
+              className="w-full rounded-lg border border-border bg-surface-sunken py-2.5 pr-3 pl-9 text-sm text-foreground placeholder:text-text-muted transition-colors duration-150 focus:border-accent-text"
+            />
+          </div>
+
+          {users.isPending && (
+            <div className="space-y-2">
+              <Skeleton className="h-14 w-full rounded-xl" />
+              <Skeleton className="h-14 w-full rounded-xl" />
+              <Skeleton className="h-14 w-full rounded-xl" />
+            </div>
+          )}
+
+          {users.isError && <Alert>Couldn&apos;t load the directory.</Alert>}
+
+          {users.data?.length === 0 && (
+            <EmptyState
+              icon={<SearchIcon className="h-5 w-5" />}
+              title="No one by that name"
+              description={
+                debouncedSearch
+                  ? `Nothing matches "${debouncedSearch}". Try a shorter search.`
+                  : "The directory is empty."
+              }
+            />
+          )}
+
+          <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border">
+            {users.data?.map((user) => (
+              <li
+                key={user.id}
+                className="flex items-center gap-3 bg-surface px-3 py-2.5 transition-colors duration-150 hover:bg-surface-raised"
+              >
+                <Avatar username={user.username} size="md" />
+                <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
+                  {user.username}
+                </span>
+                <Button size="sm" variant="secondary" onClick={() => setInviteTarget(user)}>
+                  Invite
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </div>
       </div>
-
-      {users.isPending && <p className="text-sm text-zinc-600 dark:text-zinc-400">Loading...</p>}
-      {users.isError && (
-        <p className="text-sm text-red-600 dark:text-red-400">Couldn&apos;t load users.</p>
-      )}
-      {users.data && users.data.length === 0 && (
-        <p className="text-sm text-zinc-600 dark:text-zinc-400">No users found.</p>
-      )}
-
-      <ul className="space-y-2">
-        {users.data?.map((user) => (
-          <li
-            key={user.id}
-            className="flex items-center justify-between rounded border border-black/10 px-4 py-2 text-sm dark:border-white/10"
-          >
-            <p className="text-black dark:text-zinc-50">{user.username}</p>
-            <button
-              type="button"
-              onClick={() => setInviteTarget(user)}
-              className="rounded border border-black/10 px-3 py-1 dark:border-white/10"
-            >
-              Invite
-            </button>
-          </li>
-        ))}
-      </ul>
 
       {inviteTarget && (
         <InviteModal targetUser={inviteTarget} onClose={() => setInviteTarget(null)} />
       )}
-    </main>
+    </div>
   );
 }

@@ -1,26 +1,221 @@
 @import "tailwindcss";
 
+/* Brand scale — hue 282 ("iris"). Registered in @theme (not @theme inline)
+   so the whole ramp generates real utilities: bg-brand-600, etc. OKLCH so
+   every step is perceptually even. See design-system/DESIGN_SYSTEM.md §2.1. */
+@theme {
+  --color-brand-50: oklch(0.975 0.014 282);
+  --color-brand-100: oklch(0.95 0.028 282);
+  --color-brand-200: oklch(0.9 0.055 282);
+  --color-brand-300: oklch(0.82 0.085 282);
+  --color-brand-400: oklch(0.72 0.13 282);
+  --color-brand-500: oklch(0.62 0.17 282);
+  --color-brand-600: oklch(0.53 0.19 282);
+  --color-brand-700: oklch(0.45 0.18 282);
+  --color-brand-800: oklch(0.37 0.15 282);
+  --color-brand-900: oklch(0.3 0.12 282);
+  --color-brand-950: oklch(0.21 0.09 282);
+}
+
+/* Semantic aliases — light. Components are built against these, never
+   against the raw zinc or brand values. */
 :root {
   --background: #ffffff;
-  --foreground: #171717;
+  --foreground: var(--color-zinc-900);
+
+  --surface: #ffffff;
+  --surface-raised: var(--color-zinc-50);
+  --surface-sunken: var(--color-zinc-100);
+
+  --border: var(--color-zinc-200);
+  --border-strong: var(--color-zinc-300);
+
+  --text-secondary: var(--color-zinc-600);
+  --text-muted: var(--color-zinc-500);
+  --text-on-brand: #ffffff;
+
+  /* Two accent roles, not one. --accent is a *fill* that carries white
+     text on top of it; --accent-text is the accent used *as* text on a
+     page background. In light mode they're the same value; in dark they
+     can't be -- a fill light enough to read as text on #0a0a0a only gives
+     white text 3.8:1, under AA. */
+  --accent: var(--color-brand-600);
+  --accent-hover: var(--color-brand-700);
+  --accent-active: var(--color-brand-800);
+  --accent-text: var(--color-brand-600);
+  --accent-subtle: var(--color-brand-50);
+
+  /* Same fill/text split as the accent: the -600 step is a fill (dots,
+     borders, the danger button), the -text step is what's legible *on* the
+     matching -subtle tint. emerald-600 on emerald-50 is only 3.47:1. */
+  --success: var(--color-emerald-600);
+  --success-text: var(--color-emerald-700);
+  --success-subtle: var(--color-emerald-50);
+  --warning: var(--color-amber-600);
+  --warning-text: var(--color-amber-700);
+  --warning-subtle: var(--color-amber-50);
+  --danger: var(--color-red-600);
+  --danger-text: var(--color-red-700);
+  --danger-subtle: var(--color-red-50);
+  --info: var(--color-blue-600);
+
+  --focus-ring: var(--color-brand-500);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+
+  --color-surface: var(--surface);
+  --color-surface-raised: var(--surface-raised);
+  --color-surface-sunken: var(--surface-sunken);
+
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+
+  --color-text-secondary: var(--text-secondary);
+  --color-text-muted: var(--text-muted);
+  --color-text-on-brand: var(--text-on-brand);
+
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-active: var(--accent-active);
+  --color-accent-text: var(--accent-text);
+  --color-accent-subtle: var(--accent-subtle);
+
+  --color-success: var(--success);
+  --color-success-text: var(--success-text);
+  --color-success-subtle: var(--success-subtle);
+  --color-warning: var(--warning);
+  --color-warning-text: var(--warning-text);
+  --color-warning-subtle: var(--warning-subtle);
+  --color-danger: var(--danger);
+  --color-danger-text: var(--danger-text);
+  --color-danger-subtle: var(--danger-subtle);
+  --color-info: var(--info);
+
+  --color-focus-ring: var(--focus-ring);
+
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
+/* No theme toggle exists, so dark mode stays on prefers-color-scheme only. */
 @media (prefers-color-scheme: dark) {
   :root {
     --background: #0a0a0a;
-    --foreground: #ededed;
+    --foreground: var(--color-zinc-50);
+
+    --surface: var(--color-zinc-950);
+    --surface-raised: var(--color-zinc-900);
+    --surface-sunken: #050505;
+
+    --border: rgb(255 255 255 / 0.1);
+    --border-strong: rgb(255 255 255 / 0.16);
+
+    /* One step brighter than the light-mode pairing: zinc-500 on #0a0a0a
+       is 4.10:1, which fails AA for the 12px metadata (timestamps, counts)
+       that uses it. */
+    --text-secondary: var(--color-zinc-300);
+    --text-muted: var(--color-zinc-400);
+
+    /* Fill stays dark enough for white text; hover brightens rather than
+       darkens, which is the correct direction on a dark ground. */
+    --accent: var(--color-brand-600);
+    --accent-hover: var(--color-brand-500);
+    --accent-active: var(--color-brand-400);
+    --accent-text: var(--color-brand-400);
+    --accent-subtle: rgb(from var(--color-brand-500) r g b / 0.18);
+
+    --success: var(--color-emerald-500);
+    --success-text: var(--color-emerald-400);
+    --success-subtle: rgb(from var(--color-emerald-500) r g b / 0.16);
+    --warning: var(--color-amber-500);
+    --warning-text: var(--color-amber-400);
+    --warning-subtle: rgb(from var(--color-amber-500) r g b / 0.16);
+    --danger: var(--color-red-500);
+    --danger-text: var(--color-red-400);
+    --danger-subtle: rgb(from var(--color-red-500) r g b / 0.16);
+
+    --focus-ring: var(--color-brand-400);
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* Both rules go in @layer base, not unlayered. Unlayered CSS beats every
+   layered rule regardless of specificity, so an unlayered :focus-visible
+   here would make `focus-visible:outline-none` (a @layer utilities rule)
+   impossible to apply anywhere in the app. */
+@layer base {
+  body {
+    background: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+  }
+
+  /* Tailwind's preflight strips the browser's focus outline and nothing
+     replaced it, so keyboard users had no visible focus anywhere. One rule
+     covers every button/input/link; no per-component work needed. It sets
+     no border-radius: browsers already curve the outline to match the
+     element's own radius, and forcing one here would square off a
+     rounded-full control the moment it took focus. */
+  :focus-visible {
+    outline: 2px solid var(--color-focus-ring);
+    outline-offset: 2px;
+  }
+}
+
+/* The message pane and room rail both scroll; the default macOS/Windows
+   scrollbar is heavier than anything else in the UI. */
+@supports (scrollbar-width: thin) {
+  .scroll-thin {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-strong) transparent;
+  }
+}
+
+/* A message arriving is the one page-load-adjacent moment worth animating:
+   it tells you *this* is the new thing. Everything else is action-driven. */
+@keyframes message-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.animate-message-in {
+  animation: message-in 200ms ease-out;
+}
+
+@keyframes typing-dot {
+  0%,
+  60%,
+  100% {
+    opacity: 0.25;
+    transform: translateY(0);
+  }
+  30% {
+    opacity: 1;
+    transform: translateY(-2px);
+  }
+}
+
+.animate-typing-dot {
+  animation: typing-dot 1.2s infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-message-in,
+  .animate-typing-dot {
+    animation: none;
+  }
+
+  *,
+  *::before,
+  *::after {
+    transition-duration: 1ms !important;
+  }
 }

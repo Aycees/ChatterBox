@@ -7,6 +7,10 @@ import { useState, type FormEvent } from "react";
 import { ApiError, apiFetch } from "@/lib/api";
 import type { User } from "@/lib/types";
 import { fieldErrorsFrom, registerSchema, type RegisterInput } from "@/lib/validation";
+import { Alert } from "@/components/alert";
+import { AuthShell } from "@/components/auth-shell";
+import { Button } from "@/components/button";
+import { Field } from "@/components/field";
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -41,90 +45,68 @@ export default function RegisterPage() {
   }
 
   return (
-    <main className="flex flex-1 flex-col items-center justify-center bg-zinc-50 px-4 dark:bg-black">
-      <form
-        onSubmit={handleSubmit}
-        noValidate
-        className="w-full max-w-sm space-y-4 rounded-lg border border-black/10 bg-white p-8 dark:border-white/10 dark:bg-zinc-950"
-      >
-        <h1 className="text-xl font-semibold text-black dark:text-zinc-50">Create an account</h1>
+    <AuthShell title="Create an account">
+      <form onSubmit={handleSubmit} noValidate className="space-y-4">
+        <Field
+          label="Username"
+          id="username"
+          type="text"
+          autoComplete="username"
+          value={username}
+          error={fieldErrors.username}
+          hint="This is what people see on your messages."
+          onChange={(event) => {
+            setUsername(event.target.value);
+            setFieldErrors((prev) => ({ ...prev, username: undefined }));
+          }}
+        />
 
-        <div className="space-y-1">
-          <label htmlFor="username" className="text-sm text-zinc-600 dark:text-zinc-400">
-            Username
-          </label>
-          <input
-            id="username"
-            type="text"
-            value={username}
-            onChange={(event) => {
-              setUsername(event.target.value);
-              setFieldErrors((prev) => ({ ...prev, username: undefined }));
-            }}
-            className="w-full rounded border border-black/10 bg-transparent px-3 py-2 text-sm dark:border-white/10"
-          />
-          {fieldErrors.username && (
-            <p className="text-sm text-red-600 dark:text-red-400">{fieldErrors.username}</p>
-          )}
-        </div>
+        <Field
+          label="Email"
+          id="email"
+          type="email"
+          autoComplete="email"
+          value={email}
+          error={fieldErrors.email}
+          onChange={(event) => {
+            setEmail(event.target.value);
+            setFieldErrors((prev) => ({ ...prev, email: undefined }));
+          }}
+        />
 
-        <div className="space-y-1">
-          <label htmlFor="email" className="text-sm text-zinc-600 dark:text-zinc-400">
-            Email
-          </label>
-          <input
-            id="email"
-            type="email"
-            value={email}
-            onChange={(event) => {
-              setEmail(event.target.value);
-              setFieldErrors((prev) => ({ ...prev, email: undefined }));
-            }}
-            className="w-full rounded border border-black/10 bg-transparent px-3 py-2 text-sm dark:border-white/10"
-          />
-          {fieldErrors.email && <p className="text-sm text-red-600 dark:text-red-400">{fieldErrors.email}</p>}
-        </div>
-
-        <div className="space-y-1">
-          <label htmlFor="password" className="text-sm text-zinc-600 dark:text-zinc-400">
-            Password
-          </label>
-          <input
-            id="password"
-            type="password"
-            value={password}
-            onChange={(event) => {
-              setPassword(event.target.value);
-              setFieldErrors((prev) => ({ ...prev, password: undefined }));
-            }}
-            className="w-full rounded border border-black/10 bg-transparent px-3 py-2 text-sm dark:border-white/10"
-          />
-          {fieldErrors.password && (
-            <p className="text-sm text-red-600 dark:text-red-400">{fieldErrors.password}</p>
-          )}
-        </div>
+        <Field
+          label="Password"
+          id="password"
+          type="password"
+          autoComplete="new-password"
+          value={password}
+          error={fieldErrors.password}
+          hint="At least 8 characters."
+          onChange={(event) => {
+            setPassword(event.target.value);
+            setFieldErrors((prev) => ({ ...prev, password: undefined }));
+          }}
+        />
 
         {register.isError && (
-          <p className="text-sm text-red-600 dark:text-red-400">
-            {register.error instanceof ApiError ? register.error.message : "Registration failed"}
-          </p>
+          <Alert>
+            {register.error instanceof ApiError
+              ? register.error.message
+              : "Couldn't create that account. Try again."}
+          </Alert>
         )}
 
-        <button
-          type="submit"
-          disabled={register.isPending}
-          className="w-full rounded bg-foreground py-2 text-sm font-medium text-background disabled:opacity-50"
-        >
-          {register.isPending ? "Creating account..." : "Create account"}
-        </button>
+        <Button type="submit" disabled={register.isPending} className="w-full">
+          {register.isPending ? "Creating account" : "Create account"}
+        </Button>
 
-        <p className="text-center text-sm text-zinc-600 dark:text-zinc-400">
+        <p className="text-center text-sm text-text-secondary">
           Already have an account?{" "}
-          <Link href="/login" className="font-medium text-black underline dark:text-zinc-50">
+          <Link href="/login" className="font-medium text-accent-text hover:underline">
             Log in
           </Link>
         </p>
       </form>
-    </main>
+    </AuthShell>
   );
 }

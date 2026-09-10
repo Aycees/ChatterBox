@@ -2,9 +2,9 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useQueryClient, type InfiniteData } from "@tanstack/react-query";
-import { WS_URL } from "@/lib/api";
+import { ApiError, WS_URL } from "@/lib/api";
 import { apiFetch } from "@/lib/api";
-import type { Message, ServerEnvelope, WsTicket } from "@/lib/types";
+import type { Message, RoomMemberWithUser, ServerEnvelope, WsTicket } from "@/lib/types";
 
 export type ConnectionState = "connecting" | "open" | "closed";
 
@@ -12,6 +12,14 @@ export type ConnectionState = "connecting" | "open" | "closed";
 // user, since the server only tells us typing started, never stopped
 // (spec 5.2 doesn't define a "stopped typing" event).
 const TYPING_TIMEOUT_MS = 3000;
+
+// A socket that drops and never comes back leaves the user staring at
+// "Disconnected" with no recourse but a manual refresh -- which is not how
+// any real-time app behaves. Back off 1s, 2s, 4s, 8s, then every 15s, and
+// give up after six tries rather than reconnecting into a dead server
+// forever.
+const MAX_RECONNECT_ATTEMPTS = 6;
+const MAX_RECONNECT_DELAY_MS = 15_000;
 
 // Drives one room's live connection: mints a ws-ticket, opens the native
 // WebSocket, and folds incoming envelopes into either the TanStack Query
@@ -29,7 +37,32 @@ export function useRoomSocket(roomId: string) {
   useEffect(() => {
     let cancelled = false;
     let socket: WebSocket | null = null;
+    let attempt = 0;
+    let hasConnectedBefore = false;
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
     const typingTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
+    // Ids we've already refetched members for, so a sender the server never
+    // returns (someone who has since left) can't trigger a refetch loop.
+    const resolvedSenders = new Set<string>();
+
+    // useRoomMembers is fetched once per room and cached, so anyone who joins
+    // *after* this page loaded has no username here -- their messages render
+    // as "Unknown" and the member count stays stale. Whenever a frame
+    // mentions a user the cache doesn't know, refetch the member list once.
+    function ensureUserIsKnown(userId: string) {
+      const members = queryClient.getQueryData<RoomMemberWithUser[]>([
+        "rooms",
+        roomId,
+        "members",
+      ]);
+      // Not loaded yet: the members query is already in flight and will
+      // arrive with this user in it.
+      if (!members) return;
+      if (members.some((member) => member.user_id === userId)) return;
+      if (resolvedSenders.has(userId)) return;
+      resolvedSenders.add(userId);
+      queryClient.invalidateQueries({ queryKey: ["rooms", roomId, "members"] });
+    }
 
     // Reset, then kick off the async connect below -- this state's only
     // source of truth is "this effect, for this roomId, is running," so
@@ -43,6 +76,18 @@ export function useRoomSocket(roomId: string) {
     setOnlineUserIds(new Set());
     setTypingUserIds(new Set());
 
+    function scheduleReconnect() {
+      if (cancelled) return;
+      if (attempt >= MAX_RECONNECT_ATTEMPTS) {
+        setConnectionState("closed");
+        return;
+      }
+      const delay = Math.min(1000 * 2 ** attempt, MAX_RECONNECT_DELAY_MS);
+      attempt += 1;
+      setConnectionState("connecting");
+      retryTimer = setTimeout(connect, delay);
+    }
+
     async function connect() {
       // Two-step handshake per spec 5.2: mint a short-lived, single-use
       // ticket over a normal authenticated REST call (JWT in the
@@ -51,11 +96,15 @@ export function useRoomSocket(roomId: string) {
       let ticket: WsTicket;
       try {
         ticket = await apiFetch<WsTicket>(`/rooms/${roomId}/ws-ticket`, { method: "POST" });
-      } catch {
-        if (!cancelled) {
-          setLastError("Couldn't connect to this room.");
-          setConnectionState("closed");
-        }
+      } catch (error) {
+        if (cancelled) return;
+        // A 4xx here is an answer, not a blip: the room doesn't exist, or
+        // you're not a member of it. Retrying can't change that, so don't.
+        // Anything else (network down, 5xx) is worth another try.
+        const fatal = error instanceof ApiError && error.status >= 400 && error.status < 500;
+        setLastError("Couldn't connect to this room.");
+        if (fatal) setConnectionState("closed");
+        else scheduleReconnect();
         return;
       }
       if (cancelled) return;
@@ -64,11 +113,21 @@ export function useRoomSocket(roomId: string) {
       socketRef.current = socket;
 
       socket.onopen = () => {
-        if (!cancelled) setConnectionState("open");
+        if (cancelled) return;
+        setConnectionState("open");
+        setLastError(null);
+        attempt = 0;
+        // Messages sent while we were disconnected never arrived over the
+        // socket, so the cached history has a hole in it. Refetch on a
+        // *re*connect only -- on the first open the query is already loading.
+        if (hasConnectedBefore) {
+          queryClient.invalidateQueries({ queryKey: ["rooms", roomId, "messages"] });
+        }
+        hasConnectedBefore = true;
       };
 
       socket.onclose = () => {
-        if (!cancelled) setConnectionState("closed");
+        if (!cancelled) scheduleReconnect();
       };
 
       socket.onmessage = (event) => {
@@ -78,6 +137,7 @@ export function useRoomSocket(roomId: string) {
         switch (envelope.type) {
           case "message": {
             const newMessage = envelope.payload;
+            ensureUserIsKnown(newMessage.sender_id);
             queryClient.setQueryData<InfiniteData<Message[]>>(
               ["rooms", roomId, "messages"],
               (old) => {
@@ -90,6 +150,7 @@ export function useRoomSocket(roomId: string) {
           }
           case "presence": {
             const { user_id, status } = envelope.payload;
+            if (status === "online") ensureUserIsKnown(user_id);
             setOnlineUserIds((prev) => {
               const next = new Set(prev);
               if (status === "online") next.add(user_id);
@@ -100,6 +161,7 @@ export function useRoomSocket(roomId: string) {
           }
           case "typing": {
             const { user_id } = envelope.payload;
+            ensureUserIsKnown(user_id);
             setTypingUserIds((prev) => new Set(prev).add(user_id));
             clearTimeout(typingTimeouts.get(user_id));
             typingTimeouts.set(
@@ -126,6 +188,7 @@ export function useRoomSocket(roomId: string) {
 
     return () => {
       cancelled = true;
+      clearTimeout(retryTimer);
       socket?.close();
       socketRef.current = null;
       typingTimeouts.forEach(clearTimeout);
