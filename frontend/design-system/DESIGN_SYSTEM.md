@@ -381,3 +381,52 @@ Suggested order — each phase is independently shippable, and later phases depe
 ---
 
 *Written against the codebase as of the commit where this file was added. If the frontend has moved on since, re-check §6's audit findings before treating them as current.*
+
+
+---
+
+## 8. Implementation notes (applied)
+
+This system is implemented. `app/globals.css` is now the authoritative token
+file; `tokens.css` is kept as the record of the original handoff. Three
+deliberate divergences, all found by measuring the built UI rather than by
+re-reading the spec:
+
+**Brand hue is 282, not 264.** §2.1 names hue 264 "blue-violet," but 264 in
+OKLCH renders as an ordinary blue, near-indistinguishable from Tailwind's
+stock `blue-500`. 282 is the hue that actually reads as the iris the section
+describes.
+
+**`accent` split into a fill and a text role.** §2.1 has one `accent` token
+used for both filled surfaces (primary buttons, your own message bubbles) and
+accent-colored text (links, the active room row). In dark mode those two jobs
+need opposite lightness: `brand-500` is readable as text on `#0a0a0a` but
+gives white text on top of it only **3.83:1**, under AA. So `--accent` is now
+the fill (white text on it: 5.65:1 in both themes) and `--accent-text` is the
+accent used as text (5.65:1 light, 7.73:1 dark). `success`/`warning`/`danger`
+are split the same way for the same reason — `emerald-600` on `emerald-50` is
+3.47:1, so the connection pill needed `emerald-700` as its text color.
+
+**Dark `text-secondary`/`text-muted` moved up one step** (zinc-400/500 →
+zinc-300/400). §2.1's dark `text-muted` is `zinc-500`, which is 4.10:1 on
+`#0a0a0a` — it fails AA for the 12px metadata (timestamps, member counts,
+rail section labels) that uses it.
+
+**`Badge` (§3.4) was not built.** Its only specified use was the "Private"
+room tag, and the shipped design distinguishes private rooms with a padlock
+glyph in place of the `#` — in the rail, the room header, and the invite
+dialog. That's denser and scans better in a list than a text tag, so the
+component had no remaining job.
+
+**The global `:focus-visible` rule must live in `@layer base`.** Written
+unlayered (as it is in `tokens.css`), it beats every Tailwind utility
+regardless of specificity, because unlayered CSS always wins over layered
+CSS — which made `focus-visible:outline-none` impossible to apply anywhere in
+the app. It also no longer sets `border-radius`: browsers already curve the
+outline to the element's own radius, and forcing 6px there would square off a
+`rounded-full` control the moment it took focus.
+
+§4.3's "swap the Send button label to 'Reconnecting…'" is handled differently:
+the send control is an icon button, so the explanation lives in a line above
+the composer that says why sending is unavailable, alongside the status pill
+in the header.

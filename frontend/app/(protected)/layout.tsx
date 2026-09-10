@@ -1,21 +1,24 @@
 "use client";
 
-import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, type ReactNode } from "react";
+import { cn } from "@/lib/cn";
 import { useAuth } from "@/lib/auth-context";
 import { getToken } from "@/lib/token";
-import { useCurrentUser } from "@/lib/use-current-user";
+import { RoomRail } from "./room-rail";
 
 // Auth gate for every route nested under this route group -- (protected)
 // doesn't add a URL segment, it just lets these routes share this layout
 // without /login and /register (siblings, outside the group) getting it
 // too. Add a new protected page by dropping it in this folder; it's
 // guarded automatically, no per-page wrapper needed.
+//
+// It's also the app shell: the room rail lives here so it persists across
+// navigations instead of being unmounted every time you open a room.
 export default function ProtectedLayout({ children }: { children: ReactNode }) {
   const router = useRouter();
-  const { token, logout } = useAuth();
-  const { data: user } = useCurrentUser();
+  const pathname = usePathname();
+  const { token } = useAuth();
 
   useEffect(() => {
     // `token` (from useSyncExternalStore) reports the server snapshot --
@@ -32,32 +35,26 @@ export default function ProtectedLayout({ children }: { children: ReactNode }) {
 
   if (!token) return null;
 
+  // Below md the two panes can't share the viewport, so exactly one shows:
+  // the rail at "/", the content pane everywhere else (each content page
+  // renders its own back affordance). This is a visibility toggle, not a
+  // route change -- both panes stay mounted, so the socket and the rail's
+  // caches survive the switch.
+  const showRailOnMobile = pathname === "/";
+
   return (
-    <div className="flex flex-1 flex-col">
-      <header className="flex items-center justify-between border-b border-black/10 px-6 py-3 dark:border-white/10">
-        <div className="flex items-center gap-6">
-          <Link href="/" className="font-semibold text-black dark:text-zinc-50">
-            ChatterBox
-          </Link>
-          <Link
-            href="/users"
-            className="text-sm text-zinc-600 hover:text-black dark:text-zinc-400 dark:hover:text-zinc-50"
-          >
-            Users
-          </Link>
-        </div>
-        <div className="flex items-center gap-3 text-sm">
-          {user && <span className="text-zinc-600 dark:text-zinc-400">{user.username}</span>}
-          <button
-            type="button"
-            onClick={logout}
-            className="rounded border border-black/10 px-3 py-1 dark:border-white/10"
-          >
-            Log out
-          </button>
-        </div>
-      </header>
-      <div className="flex flex-1 flex-col">{children}</div>
+    <div className="flex h-dvh overflow-hidden">
+      <aside
+        className={cn(
+          "shrink-0 md:flex md:w-auto",
+          showRailOnMobile ? "flex w-full" : "hidden"
+        )}
+      >
+        <RoomRail />
+      </aside>
+      <main className={cn("min-w-0 flex-1", showRailOnMobile ? "hidden md:flex" : "flex")}>
+        {children}
+      </main>
     </div>
   );
 }
