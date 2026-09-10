@@ -9,8 +9,10 @@ from app.api.deps import get_authenticated_db, get_current_user
 from app.core.ws_tickets import TICKET_TTL_SECONDS, tickets
 from app.models.message import Message
 from app.models.room import Room
+from app.models.room_invite import RoomInvite
 from app.models.room_member import RoomMember
 from app.models.user import User
+from app.schemas.invite import InviteCreate, InviteOut
 from app.schemas.message import MessageOut
 from app.schemas.room import (
     RoomCreate,
@@ -142,6 +144,64 @@ async def join_room(
     # expire_on_commit=False, and would break on the same transaction-scoped
     # app.current_user_id issue if it ran here.
     return membership
+
+
+@router.post(
+    "/{room_id}/invites", response_model=InviteOut, status_code=status.HTTP_201_CREATED
+)
+async def create_invite(
+    room_id: uuid.UUID,
+    invite_in: InviteCreate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_authenticated_db),
+) -> RoomInvite:
+    # Only a room's owner can send invites for it (room_invites_insert's
+    # WITH CHECK enforces the same rule at the DB layer) -- the invite modal
+    # only ever offers rooms the caller owns, so this mirrors that.
+    if invite_in.invited_user_id == current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot invite yourself"
+        )
+
+    target_exists = await db.execute(
+        select(User.id).where(User.id == invite_in.invited_user_id)
+    )
+    if target_exists.scalar_one_or_none() is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    already_member = await db.execute(
+        select(RoomMember).where(
+            RoomMember.room_id == room_id, RoomMember.user_id == invite_in.invited_user_id
+        )
+    )
+    if already_member.scalar_one_or_none() is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="That user is already a member of this room",
+        )
+
+    invite = RoomInvite(
+        id=uuid.uuid4(),
+        room_id=room_id,
+        invited_user_id=invite_in.invited_user_id,
+        invited_by_id=current_user.id,
+    )
+    db.add(invite)
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="There's already a pending invite for this user",
+        )
+    except ProgrammingError:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed to invite to this room"
+        )
+
+    return invite
 
 
 @router.get("/{room_id}/messages", response_model=list[MessageOut])

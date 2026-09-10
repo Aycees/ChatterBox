@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState, type FormEvent } from "react";
 import { ApiError } from "@/lib/api";
+import { useAcceptInvite, useDeclineInvite, useMyInvites } from "@/lib/use-invites";
 import { useCreateRoom, useJoinRoom, useMyRooms, usePublicRooms } from "@/lib/use-rooms";
 
 export default function RoomsPage() {
@@ -10,6 +11,9 @@ export default function RoomsPage() {
   const publicRooms = usePublicRooms();
   const createRoom = useCreateRoom();
   const joinRoom = useJoinRoom();
+  const myInvites = useMyInvites();
+  const acceptInvite = useAcceptInvite();
+  const declineInvite = useDeclineInvite();
 
   const [name, setName] = useState("");
   const [isPrivate, setIsPrivate] = useState(false);
@@ -27,6 +31,50 @@ export default function RoomsPage() {
 
   return (
     <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-8 px-4 py-8">
+      {myInvites.data && myInvites.data.length > 0 && (
+        <section>
+          <h2 className="mb-4 text-lg font-semibold text-black dark:text-zinc-50">Invitations</h2>
+          <ul className="space-y-2">
+            {myInvites.data.map((invite) => (
+              <li
+                key={invite.id}
+                className="flex items-center justify-between rounded border border-black/10 px-4 py-2 text-sm dark:border-white/10"
+              >
+                <span className="text-black dark:text-zinc-50">
+                  <span className="font-medium">{invite.invited_by_username}</span> invited you to{" "}
+                  <span className="font-medium">{invite.room_name}</span>
+                </span>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => acceptInvite.mutate(invite.id)}
+                    disabled={acceptInvite.isPending || declineInvite.isPending}
+                    className="rounded bg-foreground px-3 py-1 text-xs font-medium text-background disabled:opacity-50"
+                  >
+                    Accept
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => declineInvite.mutate(invite.id)}
+                    disabled={acceptInvite.isPending || declineInvite.isPending}
+                    className="rounded border border-black/10 px-3 py-1 text-xs disabled:opacity-50 dark:border-white/10"
+                  >
+                    Decline
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+          {(acceptInvite.isError || declineInvite.isError) && (
+            <p className="mt-2 text-sm text-red-600 dark:text-red-400">
+              {(acceptInvite.error ?? declineInvite.error) instanceof ApiError
+                ? (acceptInvite.error ?? declineInvite.error)?.message
+                : "Couldn't update invite"}
+            </p>
+          )}
+        </section>
+      )}
+
       <section>
         <h1 className="mb-4 text-lg font-semibold text-black dark:text-zinc-50">Your rooms</h1>
         {myRooms.isPending && <p className="text-sm text-zinc-600 dark:text-zinc-400">Loading...</p>}
