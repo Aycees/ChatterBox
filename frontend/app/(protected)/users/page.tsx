@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useUsers } from "@/lib/use-users";
-import type { User } from "@/lib/types";
+import type { UserDirectoryEntry } from "@/lib/types";
 import { InviteModal } from "./invite-modal";
 
 const SEARCH_DEBOUNCE_MS = 300;
@@ -10,7 +10,7 @@ const SEARCH_DEBOUNCE_MS = 300;
 export default function UsersPage() {
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [inviteTarget, setInviteTarget] = useState<User | null>(null);
+  const [inviteTarget, setInviteTarget] = useState<UserDirectoryEntry | null>(null);
 
   useEffect(() => {
     const timeout = setTimeout(() => setDebouncedSearch(search.trim()), SEARCH_DEBOUNCE_MS);
@@ -46,10 +46,7 @@ export default function UsersPage() {
             key={user.id}
             className="flex items-center justify-between rounded border border-black/10 px-4 py-2 text-sm dark:border-white/10"
           >
-            <div>
-              <p className="text-black dark:text-zinc-50">{user.username}</p>
-              <p className="text-xs text-zinc-500">{user.email}</p>
-            </div>
+            <p className="text-black dark:text-zinc-50">{user.username}</p>
             <button
               type="button"
               onClick={() => setInviteTarget(user)}

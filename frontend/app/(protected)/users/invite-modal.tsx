@@ -5,10 +5,10 @@ import { ApiError } from "@/lib/api";
 import { useCreateInvite } from "@/lib/use-invites";
 import { useMyRooms } from "@/lib/use-rooms";
 import { useCurrentUser } from "@/lib/use-current-user";
-import type { User } from "@/lib/types";
+import type { UserDirectoryEntry } from "@/lib/types";
 
 type InviteModalProps = {
-  targetUser: User;
+  targetUser: UserDirectoryEntry;
   onClose: () => void;
 };
 

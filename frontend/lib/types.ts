@@ -8,6 +8,14 @@ export type User = {
   created_at: string;
 };
 
+// schemas/user.py:UserDirectoryOut -- GET /users deliberately omits email
+// (any authenticated user can query it for everyone else, see users.py).
+export type UserDirectoryEntry = {
+  id: string;
+  username: string;
+  created_at: string;
+};
+
 export type Token = {
   access_token: string;
   token_type: string;
